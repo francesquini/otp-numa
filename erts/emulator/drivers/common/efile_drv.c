@@ -206,6 +206,9 @@ dt_private *get_dt_private(int);
 #  define KEY(desc) (&(desc)->key)
 #endif
 
+#ifndef MAX
+#  define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#endif
 
 #ifdef FILENAMES_16BIT
 #ifdef USE_VM_PROBES
@@ -2597,7 +2600,7 @@ file_output(ErlDrvData e, char* buf, ErlDrvSizeT count)
 #ifdef USE_VM_PROBES
 	    dt_s1 = d->b;
 	    dt_s2 = d->b + namelen;
-	    dt_utag = buf + namelen + FILENAME_BYTELEN(name) + FILENAME_CHARSIZE;
+	    dt_utag = buf + namelen + FILENAME_BYTELEN(new_name) + FILENAME_CHARSIZE;
 #endif
 	    d->flags = desc->flags;
 	    d->fd = fd;
@@ -2848,8 +2851,9 @@ file_output(ErlDrvData e, char* buf, ErlDrvSizeT count)
 
     case FILE_READLINK:
 	{
-	    d = EF_SAFE_ALLOC(sizeof(struct t_data) - 1 + RESBUFSIZE + 1);
-	
+	    d = EF_SAFE_ALLOC(sizeof(struct t_data) - 1 + 
+			      MAX(RESBUFSIZE, (FILENAME_BYTELEN(name) +  
+					       FILENAME_CHARSIZE))  + 1);
 	    FILENAME_COPY(d->b, name);
 #ifdef USE_VM_PROBES
 	    dt_s1 = d->b;
@@ -2864,7 +2868,9 @@ file_output(ErlDrvData e, char* buf, ErlDrvSizeT count)
 
     case FILE_ALTNAME:
 	{
-	    d = EF_SAFE_ALLOC(sizeof(struct t_data) - 1 + RESBUFSIZE + 1);
+	     d = EF_SAFE_ALLOC(sizeof(struct t_data) - 1 + 
+			       MAX(RESBUFSIZE, (FILENAME_BYTELEN(name) +  
+						FILENAME_CHARSIZE))  + 1);
 	    FILENAME_COPY(d->b, name);
 #ifdef USE_VM_PROBES
 	    dt_s1 = d->b;

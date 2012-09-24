@@ -220,8 +220,8 @@ search_area(Parent) ->
 	    search=TC1,goto=TC2,radio={Nbtn,Pbtn,Cbtn}}.
 
 edit(Index, #state{pid=Pid, frame=Frame}) ->
-    Str = get_row(Pid, Index, all),
-    case observer_lib:user_term(Frame, "Edit object:", Str) of
+    Str = get_row(Pid, Index, all_multiline),
+    case observer_lib:user_term_multiline(Frame, "Edit object:", Str) of
 	cancel -> ok;
 	{ok, Term} -> Pid ! {edit, Index, Term};
 	Err = {error, _} -> self() ! Err
@@ -324,7 +324,7 @@ handle_event(#wx{id=?SEARCH_ENTRY, event=#wxCommand{type=command_text_enter,cmdS
 	    wxStatusBar:setStatusText(SB, "Not found"),
 	    Pid ! {mark_search_hit, Find#find.start},
 	    wxListCtrl:refreshItem(Grid, Find#find.start),
-	    {noreply, State#state{search=Search#search{find=#find{found=false}}}};
+	    {noreply, State#state{search=Search#search{find=Find#find{found=false}}}};
 	Row ->
 	    wxListCtrl:ensureVisible(Grid, Row),
 	    wxListCtrl:refreshItem(Grid, Row),
@@ -597,7 +597,7 @@ keysort(Col, Table) ->
     lists:sort(Sort, Table).
 
 search([Str, Row, Dir0, CaseSens],
-       S=#holder{parent=Parent, table=Table}) ->
+       S=#holder{parent=Parent, table=Table0}) ->
     Opt = case CaseSens of
 	      true -> [];
 	      false -> [caseless]
@@ -608,29 +608,35 @@ search([Str, Row, Dir0, CaseSens],
 	  end,
     Res = case re:compile(Str, Opt) of
 	      {ok, Re} ->
+		  Table =
+		      case Dir0 of
+			  true ->
+			      lists:nthtail(Row, Table0);
+			  false ->
+			      lists:reverse(lists:sublist(Table0, Row+1))
+		      end,
 		  search(Row, Dir, Re, Table);
 	      {error, _} -> false
 	  end,
     Parent ! {self(), Res},
     S#holder{search=Res}.
 
-search(Row, Dir, Re, Table) ->
-    Res = try lists:nth(Row+1, Table) of
-	      Term ->
-		  Str = format(Term),
-		  re:run(Str, Re)
-	  catch _:_ -> no_more
-	  end,
+search(Row, Dir, Re, [ [Term|_] |Table]) ->
+    Str = format(Term),
+    Res = re:run(Str, Re),
     case Res of
 	nomatch -> search(Row+Dir, Dir, Re, Table);
-	no_more -> false;
 	{match,_} -> Row
-    end.
+    end;
+search(_, _, _, []) ->
+    false.
 
 get_row(From, Row, Col, Table) ->
     case lists:nth(Row+1, Table) of
 	[Object|_] when Col =:= all ->
 	    From ! {self(), format(Object)};
+	[Object|_] when Col =:= all_multiline ->
+	    From ! {self(), io_lib:format("~p", [Object])};
 	[Object|_] when tuple_size(Object) >= Col ->
 	    From ! {self(), format(element(Col, Object))};
 	_ ->
@@ -772,7 +778,7 @@ format_tuple(_Tuple, 1, 0) ->
 format_list([]) -> "[]";
 format_list(List) ->
     case printable_list(List) of
-	true ->  io_lib:format("\"~ts\"", [List]);
+	true ->  io_lib:format("\"~ts\"", [map_printable_list(List)]);
 	false -> [$[ | make_list(List)]
     end.
 
@@ -780,6 +786,24 @@ make_list([Last]) ->
     [format(Last), $]];
 make_list([Head|Tail]) ->
     [format(Head), $,|make_list(Tail)].
+
+map_printable_list([$\n|Cs]) ->
+    [$\\, $n|map_printable_list(Cs)];
+map_printable_list([$\r|Cs]) ->
+    [$\\, $r|map_printable_list(Cs)];
+map_printable_list([$\t|Cs]) ->
+    [$\\, $t|map_printable_list(Cs)];
+map_printable_list([$\v|Cs]) ->
+    [$\\, $v|map_printable_list(Cs)];
+map_printable_list([$\b|Cs]) ->
+    [$\\, $b|map_printable_list(Cs)];
+map_printable_list([$\f|Cs]) ->
+    [$\\, $f|map_printable_list(Cs)];
+map_printable_list([$\e|Cs]) ->
+    [$\\, $e|map_printable_list(Cs)];
+map_printable_list([]) -> [];
+map_printable_list([C|Cs]) ->
+    [C|map_printable_list(Cs)].
 
 %% printable_list([Char]) -> bool()
 %%  Return true if CharList is a list of printable characters, else

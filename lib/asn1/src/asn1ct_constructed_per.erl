@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1997-2011. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2012. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -119,9 +119,7 @@ gen_encode_constructed(Erule,Typename,D) when is_record(D,type) ->
 				      "end,",nl]),
 				asn1ct_name:new(val)
 			end,
-		    lists:foreach(ExtGroupFun,ExtGroupPosLenList);
-		_ -> % no extensionAdditionGroup
-		    ok
+		    lists:foreach(ExtGroupFun,ExtGroupPosLenList)
 	    end,
 	    asn1ct_name:new(tmpval),
 	    emit(["Extensions = ?RT_PER:fixextensions(",{asis,Ext},",",

@@ -4,7 +4,7 @@
 <comref>
   <header>
     <copyright>
-      <year>1997</year><year>2011</year>
+      <year>1997</year><year>2012</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -67,7 +67,7 @@
       <item>
         <p>Instructs the compiler to search for include files in
           the specified directory. When encountering an
-          <c><![CDATA[-include]]></c> or <c><![CDATA[-include_dir]]></c> directive, the
+          <c><![CDATA[-include]]></c> or <c><![CDATA[-include_lib]]></c> directive, the
           compiler searches for header files in the following
           directories:</p>
         <list type="ordered">

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2002-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2002-2012. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -723,17 +723,12 @@ decode_unconstrained_number(Bytes) ->
     {Ints,Bytes3} = getoctets_as_bin(Bytes2,Len),
     {dec_integer(Ints),Bytes3}.
 
-
-dec_pos_integer(Ints) ->
-    decpint(Ints).
 dec_integer(Bin = <<0:1,_:7,_/binary>>) ->  
     decpint(Bin);
 dec_integer(<<_:1,B:7,BitStr/bitstring>>) ->
     Size = bit_size(BitStr),
     <<I:Size>> = BitStr,
     (-128 + B) bsl bit_size(BitStr) bor I.
-
-    
     
 decpint(Bin) ->
     Size = bit_size(Bin),

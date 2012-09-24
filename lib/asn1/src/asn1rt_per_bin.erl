@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2001-2011. All Rights Reserved.
+%% Copyright Ericsson AB 2001-2012. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -803,8 +803,6 @@ decode_unconstrained_number(Bytes) ->
     {Ints,Bytes3} = getoctets_as_list(Bytes2,Len),
     {dec_integer(Ints),Bytes3}.
 
-dec_pos_integer(Ints) ->
-    decpint(Ints, 8 * (length(Ints) - 1)).
 dec_integer(Ints) when hd(Ints) band 255 =< 127 -> %% Positive number
     decpint(Ints, 8 * (length(Ints) - 1));
 dec_integer(Ints) ->                        %% Negative
