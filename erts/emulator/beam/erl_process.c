@@ -42,6 +42,7 @@
 #include "erl_thr_queue.h"
 #include "erl_async.h"
 #include "dtrace-wrapper.h"
+#include "erl_process_sched.h"
 
 #define ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED (2000*CONTEXT_REDS)
 #define ERTS_RUNQ_CALL_CHECK_BALANCE_REDS \
@@ -6540,22 +6541,6 @@ erts_set_process_priority(Process *p, Eterm new_value)
 */
 
 
-
-
-/*Internal data structure used during the scheduling of processes*/
-
-struct scheduling_data {
-	ErtsRunQueue *rq;
-	ErtsRunPrioQueue *rpq;
-	erts_aint_t dt;
-	ErtsSchedulerData *esdp;
-	int context_reds;
-	int fcalls;
-	int input_reductions;
-	int actual_reds;
-	int reds;
-};
-
 /* Scheduling inlined static functions */
 
 ERTS_GLB_INLINE void schedule_dtrace_probes_unscheduled(Process *p) {
@@ -6830,7 +6815,7 @@ ERTS_GLB_INLINE int schedule_system_level_activities(struct scheduling_data* sd)
 	erts_sys_schedule_interrupt(0);
 #endif
 	erts_smp_runq_unlock(sd->rq);
-	erl_sys_schedule(1);
+	erl_sys_1);
 	sd->dt = erts_do_time_read_and_reset();
 	if (sd->dt) erts_bump_timer(sd->dt);
 #ifdef ERTS_SMP
