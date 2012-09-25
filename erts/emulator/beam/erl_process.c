@@ -6579,7 +6579,7 @@ ERTS_GLB_INLINE void schedule_trace_out(Process *p) {
 }
 
 
-ERTS_GLB_INLINE void schedule_get_context_reductions(struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_get_context_reductions(scheduling_data* sd) {
 	if (ERTS_USE_MODIFIED_TIMING()) {
 		sd->context_reds = ERTS_MODIFIED_TIMING_CONTEXT_REDS;
 		sd->input_reductions = ERTS_MODIFIED_TIMING_INPUT_REDS;
@@ -6590,7 +6590,7 @@ ERTS_GLB_INLINE void schedule_get_context_reductions(struct scheduling_data* sd)
 	}
 }
 
-ERTS_GLB_INLINE void schedule_out_clean_up(Process* p, int calls, struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_out_clean_up(Process* p, int calls, scheduling_data* sd) {
 	/*
 	 * Clean up after the process being scheduled out.
 	 */
@@ -6709,7 +6709,7 @@ ERTS_GLB_INLINE void schedule_out_clean_up(Process* p, int calls, struct schedul
 
 #ifdef ERTS_SMP
 
-ERTS_GLB_INLINE void schedule_check_balance_and_immigrate(struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_check_balance_and_immigrate(scheduling_data* sd) {
 
 	if (sd->rq->check_balance_reds <= 0)
 	    check_balance(sd->rq);
@@ -6721,7 +6721,7 @@ ERTS_GLB_INLINE void schedule_check_balance_and_immigrate(struct scheduling_data
 	    immigrate(sd->rq);
 }
 
-ERTS_GLB_INLINE void schedule_check_queue_suspension_and_bind(struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_check_queue_suspension_and_bind(scheduling_data* sd) {
 	if (sd->rq->flags & (ERTS_RUNQ_FLG_CHK_CPU_BIND
 			| ERTS_RUNQ_FLG_SUSPENDED)) {
 		if (sd->rq->flags & ERTS_RUNQ_FLG_SUSPENDED) {
@@ -6734,7 +6734,7 @@ ERTS_GLB_INLINE void schedule_check_queue_suspension_and_bind(struct scheduling_
 	}
 }
 
-ERTS_GLB_INLINE void schedule_handle_leader_update_and_aux_work(struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_handle_leader_update_and_aux_work(scheduling_data* sd) {
 	erts_aint32_t aux_work;
 	int leader_update = erts_thr_progress_update(sd->esdp);
 	aux_work = erts_atomic32_read_acqb(&sd->esdp->ssi->aux_work);
@@ -6750,7 +6750,7 @@ ERTS_GLB_INLINE void schedule_handle_leader_update_and_aux_work(struct schedulin
 
 #else
 
-ERTS_GLB_INLINE void schedule_handle_aux_work(struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_handle_aux_work(scheduling_data* sd) {
 	erts_aint32_t aux_work;
 	aux_work = erts_atomic32_read_acqb(&sd->esdp->ssi->aux_work);
 	if (aux_work)
@@ -6761,7 +6761,7 @@ ERTS_GLB_INLINE void schedule_handle_aux_work(struct scheduling_data* sd) {
 
 
 
-ERTS_GLB_INLINE int schedule_check_queues_empty_try_stealing(struct scheduling_data* sd) {
+ERTS_GLB_INLINE int schedule_check_queues_empty_try_stealing(scheduling_data* sd) {
 
 #ifdef ERTS_SMP
 
@@ -6802,7 +6802,7 @@ ERTS_GLB_INLINE int schedule_check_queues_empty_try_stealing(struct scheduling_d
 }
 
 
-ERTS_GLB_INLINE int schedule_system_level_activities(struct scheduling_data* sd) {
+ERTS_GLB_INLINE int schedule_system_level_activities(scheduling_data* sd) {
 	/*
 	 * Schedule system-level activities.
 	 */
@@ -6831,7 +6831,7 @@ ERTS_GLB_INLINE int schedule_system_level_activities(struct scheduling_data* sd)
 /*
  * Find a new port to run.
  */
-ERTS_GLB_INLINE int schedule_find_new_port_to_run(struct scheduling_data* sd) {
+ERTS_GLB_INLINE int schedule_find_new_port_to_run(scheduling_data* sd) {
 	if (sd->rq->ports.info.len) {
 		int have_outstanding_io;
 		have_outstanding_io = erts_port_task_execute(sd->rq, &sd->esdp->current_port);
@@ -6879,7 +6879,7 @@ ERTS_GLB_INLINE void schedule_trace_exiting_entering_calls(Process *p) {
 	}
 }
 
-ERTS_GLB_INLINE void schedule_check_forced_gc(Process *p, struct scheduling_data* sd) {
+ERTS_GLB_INLINE void schedule_check_forced_gc(Process *p, scheduling_data* sd) {
 	if (!ERTS_PROC_IS_EXITING(p)
 			&& ((FLAGS(p) & F_FORCE_GC)
 					|| (MSO(p).overhead > BIN_VHEAP_SZ(p)))) {
@@ -6891,7 +6891,7 @@ ERTS_GLB_INLINE void schedule_check_forced_gc(Process *p, struct scheduling_data
 }
 
 
-ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, struct scheduling_data* sd, int check_balance) {
+ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, scheduling_data* sd, int check_balance) {
 
 #ifdef ERTS_SMP
 		if (check_balance) schedule_check_balance_and_immigrate(sd);
@@ -7099,7 +7099,7 @@ ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, struct sc
 
 Process *schedule(Process *p, int calls) {
 
-	struct scheduling_data sd;
+	scheduling_data sd;
 
 	schedule_dtrace_probes_unscheduled(p);
 	schedule_get_context_reductions(&sd);
