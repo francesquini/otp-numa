@@ -6769,7 +6769,7 @@ ERTS_GLB_INLINE void schedule_handle_aux_work(struct scheduling_data* sd) {
 	erts_aint32_t aux_work;
 	aux_work = erts_atomic32_read_acqb(&sd->esdp->ssi->aux_work);
 	if (aux_work)
-		handle_aux_work(&sd->esdp->aux_work_data, aux_work);
+		handle_aux_work(&sd->esdp->aux_work_data, aux_work, 0);
 }
 
 #endif
