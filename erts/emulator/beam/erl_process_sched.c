@@ -1,6 +1,5 @@
 #include "erl_process_sched.h"
 #include "erl_process_sched_ip.h"
-#include "sys.h" //ERTS_GLB_INLINE
 
 static unsigned int (*PROC_SCHED_CURRENT_IP_STRATEGY)(Process*) = &proc_sched_ip_default;
 
