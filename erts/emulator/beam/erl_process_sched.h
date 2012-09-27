@@ -50,9 +50,6 @@ typedef enum enum_proc_sched_migration_strategy {
 	PROC_SCHED_MIGRATION_PARENT
 } proc_sched_migration_strategy;
 
-extern static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY = PROC_SCHED_IP_DEFAULT;
-
-
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy);
 void proc_sched_check_balance (scheduling_data*);
 void proc_sched_immigrate (scheduling_data*);
