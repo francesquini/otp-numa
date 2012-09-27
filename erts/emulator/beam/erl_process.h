@@ -856,6 +856,21 @@ typedef struct {
     int scheduler;
 } ErlSpawnOpts;
 
+
+/*Internal data structure used during the scheduling of processes*/
+typedef struct scheduling_data_struct {
+	ErtsRunQueue *rq;
+	ErtsRunPrioQueue *rpq;
+	erts_aint_t dt;
+	ErtsSchedulerData *esdp;
+	int context_reds;
+	int fcalls;
+	int input_reductions;
+	int actual_reds;
+	int reds;
+} scheduling_data;
+
+
 /*
  * The KILL_CATCHES(p) macro kills pending catches for process p.
  */

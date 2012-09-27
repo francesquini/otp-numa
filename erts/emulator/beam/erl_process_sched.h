@@ -1,21 +1,11 @@
 #ifndef __ERL_PROCESS_SCHED_H__
 #define __ERL_PROCESS_SCHED_H__
 
+#ifdef HAVE_CONFIG_H
+#  include "config.h"
+#endif
+
 #include "erl_process.h"
-
-/*Internal data structure used during the scheduling of processes*/
-typedef struct scheduling_data_struct {
-	ErtsRunQueue *rq;
-	ErtsRunPrioQueue *rpq;
-	erts_aint_t dt;
-	ErtsSchedulerData *esdp;
-	int context_reds;
-	int fcalls;
-	int input_reductions;
-	int actual_reds;
-	int reds;
-} scheduling_data;
-
 
 /****************************************************
  ****************************************************
@@ -32,7 +22,7 @@ typedef enum enum_proc_sched_ip_strategy {
 } proc_sched_ip_strategy;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
-int proc_sched_initial_placement (Process*);
+int proc_sched_initial_placement (Process* proc);
 
 
 /****************************************************
