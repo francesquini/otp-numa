@@ -31,7 +31,7 @@ typedef enum enum_proc_sched_ip_strategy {
 	PROC_SCHED_IP_PARENT
 } proc_sched_ip_strategy;
 
-void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy);
+void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
 int proc_sched_initial_placement (Process*);
 
 
