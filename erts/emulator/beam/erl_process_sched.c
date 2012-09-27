@@ -1,9 +1,29 @@
 #include "erl_process_sched.h"
+#include "erl_process_sched_ip.h"
 #include "sys.h" //ERTS_GLB_INLINE
 
+static unsigned int (*PROC_SCHED_CURRENT_IP_STRATEGY)(Process*) = &proc_sched_ip_default;
+
+ERTS_GLB_INLINE void proc_sched_set_initial_placement_strategy (proc_sched_migration_strategy strategy) {
+	switch (strategy) {
+		case PROC_SCHED_IP_DEFAULT:
+			PROC_SCHED_CURRENT_IP_STRATEGY = &proc_sched_ip_default;
+			break;
+		case PROC_SCHED_IP_RANDOM:
+			PROC_SCHED_CURRENT_IP_STRATEGY = &proc_sched_ip_random;
+			break;
+		case PROC_SCHED_IP_CIRCULAR:
+			PROC_SCHED_CURRENT_IP_STRATEGY = &proc_sched_ip_circular;
+			break;
+		case PROC_SCHED_IP_PARENT:
+			break;
+		default:
+			break;
+	}
+}
 
 ERTS_GLB_INLINE int proc_sched_initial_placement (Process* parent) {
-	return 0;
+	return PROC_SCHED_CURRENT_IP_STRATEGY(parent);
 }
 
 ERTS_GLB_INLINE void proc_sched_check_balance (scheduling_data *sd) {
@@ -13,3 +33,4 @@ ERTS_GLB_INLINE void proc_sched_check_balance (scheduling_data *sd) {
 ERTS_GLB_INLINE void proc_sched_immigrate (scheduling_data *sd) {
 
 }
+

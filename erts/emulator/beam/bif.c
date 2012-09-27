@@ -37,6 +37,7 @@
 #include "erl_db_util.h"
 #include "register.h"
 #include "erl_thr_progress.h"
+#include "erl_process_sched.h"
 
 static Export* flush_monitor_message_trap = NULL;
 static Export* set_cpu_topology_trap = NULL;
@@ -820,7 +821,7 @@ BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
     so.min_vheap_size = BIN_VH_MIN_SIZE;
     so.priority       = PRIORITY_NORMAL;
     so.max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-    so.scheduler      = 0;
+    so.scheduler      = proc_sched_initial_placement(BIF_P);
 
     /*
      * Walk through the option list.

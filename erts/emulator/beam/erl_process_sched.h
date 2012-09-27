@@ -17,11 +17,45 @@ typedef struct scheduling_data_struct {
 } scheduling_data;
 
 
-int proc_sched_initial_placement (Process* parent);
+/****************************************************
+ ****************************************************
+ * Initial placement
+ ****************************************************
+ ****************************************************/
 
-void proc_sched_check_balance (scheduling_data *sd);
+/* Possible ip strategies */
+typedef enum enum_proc_sched_ip_strategy {
+	PROC_SCHED_IP_DEFAULT,
+	PROC_SCHED_IP_RANDOM,
+	PROC_SCHED_IP_CIRCULAR,
+	PROC_SCHED_IP_PARENT
+} proc_sched_ip_strategy;
 
-void proc_sched_immigrate (scheduling_data *sd);
+void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy);
+int proc_sched_initial_placement (Process*);
+
+
+/****************************************************
+ ****************************************************
+ * Migration strategies
+ ****************************************************
+ ****************************************************/
+
+/* Possible migration strategies */
+typedef enum enum_proc_sched_migration_strategy {
+	PROC_SCHED_MIGRATION_DEFAULT,
+	PROC_SCHED_MIGRATION_DISABLED,
+	PROC_SCHED_MIGRATION_RANDOM,
+	PROC_SCHED_MIGRATION_CIRCULAR,
+	PROC_SCHED_MIGRATION_PARENT
+} proc_sched_migration_strategy;
+
+extern static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY = PROC_SCHED_IP_DEFAULT;
+
+
+void proc_sched_set_migration_strategy(proc_sched_migration_strategy);
+void proc_sched_check_balance (scheduling_data*);
+void proc_sched_immigrate (scheduling_data*);
 
 
 #endif
