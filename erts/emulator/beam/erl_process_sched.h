@@ -17,12 +17,12 @@
 typedef enum enum_proc_sched_ip_strategy {
 	PROC_SCHED_IP_DEFAULT,
 	PROC_SCHED_IP_RANDOM,
-	PROC_SCHED_IP_CIRCULAR,
-	PROC_SCHED_IP_PARENT
+	PROC_SCHED_IP_CIRCULAR
 } proc_sched_ip_strategy;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
-int proc_sched_initial_placement (Process* proc);
+int proc_sched_get_initial_placement_strategy(void);
+ErtsRunQueue* proc_sched_initial_placement (Process* proc);
 
 
 /****************************************************
@@ -34,15 +34,13 @@ int proc_sched_initial_placement (Process* proc);
 /* Possible migration strategies */
 typedef enum enum_proc_sched_migration_strategy {
 	PROC_SCHED_MIGRATION_DEFAULT,
-	PROC_SCHED_MIGRATION_DISABLED,
-	PROC_SCHED_MIGRATION_RANDOM,
-	PROC_SCHED_MIGRATION_CIRCULAR,
-	PROC_SCHED_MIGRATION_PARENT
+	PROC_SCHED_MIGRATION_DISABLED
 } proc_sched_migration_strategy;
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy);
-void proc_sched_check_balance (scheduling_data*);
-void proc_sched_immigrate (scheduling_data*);
+int proc_sched_get_migration_strategy(void);
+void proc_sched_check_balance (ErtsRunQueue*);
+void proc_sched_immigrate (ErtsRunQueue*);
 
 
 #endif

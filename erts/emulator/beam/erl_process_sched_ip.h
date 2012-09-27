@@ -7,8 +7,8 @@
 
 #include "erl_process.h"
 
-unsigned int proc_sched_ip_default(Process*);
-unsigned int proc_sched_ip_random(Process*);
-unsigned int proc_sched_ip_circular(Process*);
+ErtsRunQueue* proc_sched_ip_default(Process*);
+ErtsRunQueue* proc_sched_ip_random(Process*);
+ErtsRunQueue* proc_sched_ip_circular(Process*);
 
 #endif

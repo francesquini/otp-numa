@@ -53,6 +53,8 @@
 #include <valgrind/memcheck.h>
 #endif
 
+#include "erl_process_sched.h"
+
 static Export* alloc_info_trap = NULL;
 static Export* alloc_sizes_trap = NULL;
 
@@ -2695,6 +2697,12 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
 	BIF_RET(am_true);
     }
 #endif
+
+    else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
+    	BIF_RET(make_small(proc_sched_get_initial_placement_strategy()));
+    } else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
+    	BIF_RET(make_small(proc_sched_get_migration_strategy()));
+    }
 
     BIF_ERROR(BIF_P, BADARG);
 }

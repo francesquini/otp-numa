@@ -1399,6 +1399,10 @@ ErtsRunQueue *erts_prepare_emigrate(ErtsRunQueue *c_rq,
 
 ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 							 int prio);
+
+void check_balance(ErtsRunQueue *rq);
+void immigrate(ErtsRunQueue *rq);
+
 #endif
 
 ERTS_GLB_INLINE int erts_is_scheduler_bound(ErtsSchedulerData *esdp);

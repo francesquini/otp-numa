@@ -728,6 +728,7 @@ RUN_OBJS = \
 	$(OBJDIR)/erl_debug.o		$(OBJDIR)/erl_md5.o \
 	$(OBJDIR)/erl_message.o		$(OBJDIR)/erl_process.o \
 	$(OBJDIR)/erl_process_sched.o	$(OBJDIR)/erl_process_sched_ip.o \
+	$(OBJDIR)/erl_process_sched_mig.o \
 	$(OBJDIR)/erl_process_dict.o	$(OBJDIR)/erl_process_lock.o \
 	$(OBJDIR)/erl_port_task.o	$(OBJDIR)/erl_arith.o \
 	$(OBJDIR)/time.o		$(OBJDIR)/erl_time_sup.o  \

@@ -2629,7 +2629,7 @@ erts_prepare_emigrate(ErtsRunQueue *c_rq, ErtsRunQueueInfo *c_rqi, int prio)
     }
 }
 
-static void
+void
 immigrate(ErtsRunQueue *rq)
 {
     int prio;
@@ -3121,7 +3121,7 @@ do {									\
     ASSERT(sum__ == (RQ)->full_reds_history_sum);			\
 } while (0);
 
-static void
+void
 check_balance(ErtsRunQueue *c_rq)
 {
 #if ERTS_MAX_PROCESSES >= (1 << 27)
@@ -6712,13 +6712,13 @@ ERTS_GLB_INLINE void schedule_out_clean_up(Process* p, int calls, scheduling_dat
 ERTS_GLB_INLINE void schedule_check_balance_and_immigrate(scheduling_data* sd) {
 
 	if (sd->rq->check_balance_reds <= 0)
-	    check_balance(sd->rq);
+		proc_sched_check_balance (sd->rq);
 
 	ERTS_SMP_LC_ASSERT(!erts_thr_progress_is_blocking());
 	ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(sd->rq));
 
 	if (sd->rq->flags & ERTS_RUNQ_FLGS_IMMIGRATE_QMASK)
-	    immigrate(sd->rq);
+		proc_sched_immigrate(sd->rq);
 }
 
 ERTS_GLB_INLINE void schedule_check_queue_suspension_and_bind(scheduling_data* sd) {
@@ -7458,6 +7458,7 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
     Uint heap_need;		/* Size needed on heap. */
     Eterm res = THE_NON_VALUE;
 
+
 #ifdef ERTS_SMP
     erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 #endif
@@ -7712,12 +7713,12 @@ erl_create_process(Process* parent, /* Parent of process (default group leader).
      */
 
     if (!((so->flags & SPO_USE_ARGS) && so->scheduler))
-	rq = erts_get_runq_proc(parent);
+    	rq = proc_sched_initial_placement(parent);
     else {
-	int ix = so->scheduler-1;
-	ASSERT(0 <= ix && ix < erts_no_run_queues);
-	rq = ERTS_RUNQ_IX(ix);
-	p->bound_runq = rq;
+    	int ix = so->scheduler-1;
+		ASSERT(0 <= ix && ix < erts_no_run_queues);
+		rq = ERTS_RUNQ_IX(ix);
+		p->bound_runq = rq;
     }
 
     erts_smp_runq_lock(rq);

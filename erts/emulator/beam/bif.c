@@ -58,7 +58,6 @@ BIF_RETTYPE spawn_3(BIF_ALIST_3)
 {
     ErlSpawnOpts so;
     Eterm pid;
-
     so.flags = 0;
     pid = erl_create_process(BIF_P, BIF_ARG_1, BIF_ARG_2, BIF_ARG_3, &so);
     if (is_non_value(pid)) {
@@ -821,7 +820,7 @@ BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
     so.min_vheap_size = BIN_VH_MIN_SIZE;
     so.priority       = PRIORITY_NORMAL;
     so.max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-    so.scheduler      = proc_sched_initial_placement(BIF_P);
+    so.scheduler      = 0;
 
     /*
      * Walk through the option list.
@@ -4290,6 +4289,24 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
 	    "information see the erlang:system_flag/2 documentation.\n");
 	return erts_bind_schedulers(BIF_P, BIF_ARG_2);
     }
+    else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
+    	int newVal;
+    	int ret = proc_sched_get_initial_placement_strategy();
+    	if (!is_small(BIF_ARG_2))
+       		goto error;
+    	newVal = signed_val(BIF_ARG_2);
+    	proc_sched_set_initial_placement_strategy(newVal);
+    	BIF_RET(make_small(ret));
+    } else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
+    	int newVal;
+    	int ret = proc_sched_get_migration_strategy();
+    	if (!is_small(BIF_ARG_2))
+    		goto error;
+    	newVal = signed_val(BIF_ARG_2);
+    	proc_sched_set_migration_strategy(newVal);
+    	BIF_RET(make_small(ret));
+    }
+
     error:
     BIF_ERROR(BIF_P, BADARG);
 }

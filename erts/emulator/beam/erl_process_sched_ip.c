@@ -18,6 +18,7 @@ static void proc_sched_ip_random_initialize(void) {
 	if (!proc_sched_ip_random_initialized) {
 		pid_t pid = getpid();
 		struct timespec ts;
+		printf("initializing random\n");
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		proc_sched_ip_random_seed = pid * ts.tv_nsec / ts.tv_sec;
 		proc_sched_ip_random_initialized = 1;
@@ -30,8 +31,8 @@ static void proc_sched_ip_random_initialize(void) {
  ***************************
  ***************************/
 
-unsigned int proc_sched_ip_default(Process* ign) {
-	return 0;
+ErtsRunQueue* proc_sched_ip_default(Process* parent) {
+	return erts_get_runq_proc(parent);
 }
 
 /***************************
@@ -40,12 +41,12 @@ unsigned int proc_sched_ip_default(Process* ign) {
  ***************************
  ***************************/
 
-unsigned int proc_sched_ip_random(Process* ign) {
-	int rand, scheduler;
+ErtsRunQueue* proc_sched_ip_random(Process* ign) {
+	unsigned int rand, scheduler;
 	proc_sched_ip_random_initialize();
 	rand = rand_r(&proc_sched_ip_random_seed);
-	scheduler = (rand % erts_no_schedulers) + 1;
-	return scheduler;
+	scheduler = rand % erts_no_run_queues;
+	return ERTS_RUNQ_IX(scheduler);
 }
 
 /***************************
@@ -54,18 +55,10 @@ unsigned int proc_sched_ip_random(Process* ign) {
  ***************************
  ***************************/
 
-volatile unsigned long long proc_sched_ip_circular_next = 1;
+volatile unsigned long long proc_sched_ip_circular_next = 0;
 
-unsigned int proc_sched_ip_circular(Process* ign) {
-	unsigned long long nextBig = __sync_fetch_and_add(
-			&proc_sched_ip_circular_next, 1);
-	unsigned int next = (nextBig % erts_no_schedulers) + 1;
-	return next;
+ErtsRunQueue* proc_sched_ip_circular(Process* ign) {
+	unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
+	unsigned long long next = nextBig % erts_no_run_queues;
+	return ERTS_RUNQ_IX(next);
 }
-
-/***************************
- ***************************
- * Parent
- ***************************
- ***************************/
-
