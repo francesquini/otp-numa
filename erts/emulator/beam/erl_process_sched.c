@@ -1,10 +1,10 @@
 #include "erl_process_sched.h"
-#include "erl_process_sched_ip.h"
+//#include "erl_process_sched_ip.h"
 
-static unsigned int (*PROC_SCHED_CURRENT_IP_STRATEGY)(Process*) = &proc_sched_ip_default;
+//static unsigned int (*PROC_SCHED_CURRENT_IP_STRATEGY)(Process*) = &proc_sched_ip_default;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
-	switch (strategy) {
+	/*switch (strategy) {
 		case PROC_SCHED_IP_DEFAULT:
 			PROC_SCHED_CURRENT_IP_STRATEGY = &proc_sched_ip_default;
 			break;
@@ -18,11 +18,11 @@ void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy)
 			break;
 		default:
 			break;
-	}
+	}*/
 }
 
 int proc_sched_initial_placement (Process* parent) {
-	return PROC_SCHED_CURRENT_IP_STRATEGY(parent);
+	return 0;//PROC_SCHED_CURRENT_IP_STRATEGY(parent);
 }
 
 
