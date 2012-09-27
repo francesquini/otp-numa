@@ -6815,7 +6815,7 @@ ERTS_GLB_INLINE int schedule_system_level_activities(scheduling_data* sd) {
 	erts_sys_schedule_interrupt(0);
 #endif
 	erts_smp_runq_unlock(sd->rq);
-	erl_sys_1);
+	erl_sys_schedule(1);
 	sd->dt = erts_do_time_read_and_reset();
 	if (sd->dt) erts_bump_timer(sd->dt);
 #ifdef ERTS_SMP
