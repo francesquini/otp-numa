@@ -18,7 +18,6 @@ static void proc_sched_ip_random_initialize(void) {
 	if (!proc_sched_ip_random_initialized) {
 		pid_t pid = getpid();
 		struct timespec ts;
-		printf("initializing random\n");
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		proc_sched_ip_random_seed = pid * ts.tv_nsec / ts.tv_sec;
 		proc_sched_ip_random_initialized = 1;

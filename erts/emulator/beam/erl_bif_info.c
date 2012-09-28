@@ -2702,6 +2702,8 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
     	BIF_RET(make_small(proc_sched_get_initial_placement_strategy()));
     } else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
     	BIF_RET(make_small(proc_sched_get_migration_strategy()));
+    } else if (ERTS_IS_ATOM_STR("scheduler_ws_strategy", BIF_ARG_1)) {
+    	BIF_RET(make_small(proc_sched_get_ws_strategy()));
     }
 
     BIF_ERROR(BIF_P, BADARG);

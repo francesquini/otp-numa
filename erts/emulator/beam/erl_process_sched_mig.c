@@ -22,15 +22,6 @@ void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq) {
 #endif
 }
 
-
-int proc_sched_migrate_default_ws(ErtsRunQueue* rq) {
-#ifdef ERTS_SMP
-	return try_steal_task(rq);
-#else
-	return 0;
-#endif
-}
-
 /***************************
  ***************************
  * Disabled
@@ -43,8 +34,4 @@ void proc_sched_migrate_disabled_cb(ErtsRunQueue* rq) {
 
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* ign) {
 	//nothing to be done
-}
-
-int proc_sched_migrate_disabled_ws(ErtsRunQueue* rq) {
-	return 0;
 }

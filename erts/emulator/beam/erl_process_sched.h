@@ -42,7 +42,24 @@ int proc_sched_get_migration_strategy(void);
 
 void proc_sched_check_balance (ErtsRunQueue*);
 void proc_sched_immigrate (ErtsRunQueue*);
-int proc_sched_work_stealing(ErtsRunQueue*);
 
+
+
+/****************************************************
+ ****************************************************
+ * Work stealing strategies
+ ****************************************************
+ ****************************************************/
+
+/* Possible migration strategies */
+typedef enum enum_proc_sched_ws_strategy {
+	PROC_SCHED_WS_DEFAULT,
+	PROC_SCHED_WS_DISABLED
+} proc_sched_ws_strategy;
+
+void proc_sched_set_ws_strategy(proc_sched_ws_strategy);
+int proc_sched_get_ws_strategy (void);
+
+int proc_sched_work_stealing(ErtsRunQueue*);
 
 #endif

@@ -9,10 +9,8 @@
 
 void proc_sched_migrate_default_cb(ErtsRunQueue* rq);
 void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
-int proc_sched_migrate_default_ws(ErtsRunQueue* rq);
 
 void proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* rq);
-int proc_sched_migrate_disabled_ws(ErtsRunQueue* rq);
 
 #endif

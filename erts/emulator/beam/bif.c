@@ -4281,12 +4281,12 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
 	    "see the erlang:system_flag/2 documentation.\n");
 	BIF_TRAP1(set_cpu_topology_trap, BIF_P, BIF_ARG_2);
     } else if (ERTS_IS_ATOM_STR("scheduler_bind_type", BIF_ARG_1)) {
-	erts_send_warning_to_logger_str(
-	    BIF_P->group_leader,
-	    "A call to erlang:system_flag(scheduler_bind_type, _) was\n"
-	    "made. The scheduler_bind_type argument is deprecated and\n"
-	    "scheduled for removal in erts-5.10/OTP-R16. For more\n"
-	    "information see the erlang:system_flag/2 documentation.\n");
+//	erts_send_warning_to_logger_str(
+//	    BIF_P->group_leader,
+//	    "A call to erlang:system_flag(scheduler_bind_type, _) was\n"
+//	    "made. The scheduler_bind_type argument is deprecated and\n"
+//	    "scheduled for removal in erts-5.10/OTP-R16. For more\n"
+//	    "information see the erlang:system_flag/2 documentation.\n");
 	return erts_bind_schedulers(BIF_P, BIF_ARG_2);
     }
     else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
@@ -4304,6 +4304,14 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     		goto error;
     	newVal = signed_val(BIF_ARG_2);
     	proc_sched_set_migration_strategy(newVal);
+    	BIF_RET(make_small(ret));
+    } else if (ERTS_IS_ATOM_STR("scheduler_ws_strategy", BIF_ARG_1)) {
+    	int newVal;
+    	int ret = proc_sched_get_ws_strategy();
+    	if (!is_small(BIF_ARG_2))
+    		goto error;
+    	newVal = signed_val(BIF_ARG_2);
+    	proc_sched_set_ws_strategy(newVal);
     	BIF_RET(make_small(ret));
     }
 
