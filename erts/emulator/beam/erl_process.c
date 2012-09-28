@@ -2990,7 +2990,7 @@ check_possible_steal_victim(ErtsRunQueue *rq, int *rq_lockedp, int vix)
 }
 
 
-static int
+int
 try_steal_task(ErtsRunQueue *rq)
 {
     int res, rq_locked, vix, active_rqs, blnc_rqs;
@@ -6782,7 +6782,7 @@ ERTS_GLB_INLINE int schedule_check_queues_empty_try_stealing(scheduling_data* sd
 		 * Check for ERTS_RUNQ_FLG_SUSPENDED has to be done
 		 * after trying to steal a task.
 		 */
-		if (try_steal_task(sd->rq)
+		if (proc_sched_work_stealing(sd->rq)
 				|| (sd->rq->flags & ERTS_RUNQ_FLG_SUSPENDED)) {
 			non_empty_runq(sd->rq);
 			return 0;

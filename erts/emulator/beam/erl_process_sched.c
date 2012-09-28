@@ -45,16 +45,20 @@ static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY = PRO
 static void (*PROC_SCHED_CURR_MIGR_STG_CB_FUN)(ErtsRunQueue *) = &proc_sched_migrate_default_cb;
 //immigration
 static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *) = &proc_sched_migrate_default_immigrate;
+//Work Stealing
+static int (*PROC_SCHED_CURR_MIGR_STG_WS_FUN)(ErtsRunQueue *) = &proc_sched_migrate_default_ws;
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	switch (strategy) {
 		case PROC_SCHED_MIGRATION_DEFAULT:
 			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;
+			PROC_SCHED_CURR_MIGR_STG_WS_FUN = &proc_sched_migrate_default_ws;
 			break;
 		case PROC_SCHED_MIGRATION_DISABLED:
 			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
+			PROC_SCHED_CURR_MIGR_STG_WS_FUN = &proc_sched_migrate_disabled_ws;
 			break;
 		default:
 			return;
@@ -74,4 +78,7 @@ void proc_sched_immigrate (ErtsRunQueue *rq) {
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
 }
 
+int proc_sched_work_stealing(ErtsRunQueue* rq) {
+	return PROC_SCHED_CURR_MIGR_STG_WS_FUN(rq);
+}
 
