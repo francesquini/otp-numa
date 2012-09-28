@@ -18,7 +18,7 @@
 # 
 
 VSN = 5.9.2
-SYSTEM_VSN = R15B02-Emilio
+SYSTEM_VSN = R15B02Emilio
 
 # Port number 4365 in 4.2
 # Port number 4366 in 4.3
