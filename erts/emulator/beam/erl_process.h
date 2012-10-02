@@ -1403,6 +1403,11 @@ ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 void check_balance(ErtsRunQueue *rq);
 void immigrate(ErtsRunQueue *rq);
 int try_steal_task(ErtsRunQueue *rq);
+
+#ifdef USE_VM_PROBES
+void dtrace_process_migration(Process *p, ErtsRunQueue *from, ErtsRunQueue *to);
+#endif
+
 #endif
 
 ERTS_GLB_INLINE int erts_is_scheduler_bound(ErtsSchedulerData *esdp);

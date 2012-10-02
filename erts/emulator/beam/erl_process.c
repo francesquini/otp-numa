@@ -548,29 +548,36 @@ sched_wall_time_ts(void)
 #endif
 }
 
-static ERTS_INLINE void
-sched_wall_time_change(ErtsSchedulerData *esdp, int working)
-{
-    if (esdp->sched_wall_time.enabled) {
-	Uint64 ts = sched_wall_time_ts();
-	if (working) {
-#ifdef DEBUG
-	    ASSERT(!esdp->sched_wall_time.working.currently);
-	    esdp->sched_wall_time.working.currently = 1;
+static ERTS_INLINE void sched_wall_time_change(ErtsSchedulerData *esdp, int working) {
+
+#ifdef USE_VM_PROBES
+	if (working)
+		//if (DTRACE_ENABLED(scheduler_active))
+			DTRACE1(scheduler_active, esdp->no);
+	else
+		//if (DTRACE_ENABLED(scheduler_inactive))
+			DTRACE1(scheduler_inactive, esdp->no);
 #endif
-	    ts -= esdp->sched_wall_time.start;
-	    esdp->sched_wall_time.working.start = ts;
-	}
-	else {
+
+	if (esdp->sched_wall_time.enabled) {
+		Uint64 ts = sched_wall_time_ts();
+		if (working) {
 #ifdef DEBUG
-	    ASSERT(esdp->sched_wall_time.working.currently);
-	    esdp->sched_wall_time.working.currently = 0;
+			ASSERT(!esdp->sched_wall_time.working.currently);
+			esdp->sched_wall_time.working.currently = 1;
 #endif
-	    ts -= esdp->sched_wall_time.start;
-	    ts -= esdp->sched_wall_time.working.start;
-	    esdp->sched_wall_time.working.total += ts;
+			ts -= esdp->sched_wall_time.start;
+			esdp->sched_wall_time.working.start = ts;
+		} else {
+#ifdef DEBUG
+			ASSERT(esdp->sched_wall_time.working.currently);
+			esdp->sched_wall_time.working.currently = 0;
+#endif
+			ts -= esdp->sched_wall_time.start;
+			ts -= esdp->sched_wall_time.working.start;
+			esdp->sched_wall_time.working.total += ts;
+		}
 	}
-    }
 }
 
 typedef struct {
@@ -6137,65 +6144,78 @@ dequeue_process(ErtsRunQueue *runq, Process *p)
     return res;
 }
 
+#if defined(ERTS_SMP) && defined(USE_VM_PROBES)
+void dtrace_process_migration(Process *p, ErtsRunQueue *from, ErtsRunQueue *to) {
+	//if (DTRACE_ENABLED(process_migration)) {
+		int iFrom = from->ix + 1;
+		int iTo = to->ix + 1;
+		DTRACE_CHARBUF(pidbuf, DTRACE_TERM_BUF_SIZE);
+		dtrace_proc_str(p, pidbuf);
+		DTRACE3(process_migration, pidbuf, iFrom, iTo);
+	//}
+}
+#endif
+
 /* schedule a process */
-static ERTS_INLINE ErtsRunQueue *
-internal_add_to_runq(ErtsRunQueue *runq, Process *p)
-{
-    Uint32 prev_status = p->status;
-    ErtsRunQueue *add_runq;
+static ERTS_INLINE ErtsRunQueue *internal_add_to_runq(ErtsRunQueue *runq, Process *p) {
+	Uint32 prev_status = p->status;
+	ErtsRunQueue *add_runq;
 #ifdef ERTS_SMP
 
-    ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_STATUS & erts_proc_lc_my_proc_locks(p));
-    ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(runq));
+	ERTS_SMP_LC_ASSERT(ERTS_PROC_LOCK_STATUS & erts_proc_lc_my_proc_locks(p));
+	ERTS_SMP_LC_ASSERT(erts_smp_lc_runq_is_locked(runq));
 
-    if (p->status_flags & ERTS_PROC_SFLG_INRUNQ)
-	return NULL;
-    else if (p->runq_flags & ERTS_PROC_RUNQ_FLG_RUNNING) {
-	ASSERT(ERTS_PROC_IS_EXITING(p) || p->rcount == 0);
-	ERTS_DBG_CHK_PROCS_RUNQ_NOPROC(runq, p);
-	p->status_flags |= ERTS_PROC_SFLG_PENDADD2SCHEDQ;
-	return NULL;
-    }
-    ASSERT(!p->scheduler_data);
-#endif
-
-    ERTS_DBG_CHK_PROCS_RUNQ_NOPROC(runq, p);
-#ifndef ERTS_SMP
-    /* Never schedule a suspended process (ok in smp case) */
-    ASSERT(ERTS_PROC_IS_EXITING(p) || p->rcount == 0);
-    add_runq = runq;
-#else
-    ASSERT(!p->bound_runq || p->bound_runq == p->run_queue);
-    if (p->bound_runq) {
-	if (p->bound_runq == runq)
-	    add_runq = runq;
-	else {
-	    add_runq = p->bound_runq;
-	    erts_smp_xrunq_lock(runq, add_runq);
+	if (p->status_flags & ERTS_PROC_SFLG_INRUNQ)
+		return NULL;
+	else if (p->runq_flags & ERTS_PROC_RUNQ_FLG_RUNNING) {
+		ASSERT(ERTS_PROC_IS_EXITING(p) || p->rcount == 0);
+		ERTS_DBG_CHK_PROCS_RUNQ_NOPROC(runq, p);
+		p->status_flags |= ERTS_PROC_SFLG_PENDADD2SCHEDQ;
+		return NULL;
 	}
-    }
-    else {
-	add_runq = erts_check_emigration_need(runq, p->prio);
-	if (!add_runq)
-	    add_runq = runq;
-	else /* Process emigrated */
-	    p->run_queue = add_runq;
-    }
+	ASSERT(!p->scheduler_data);
 #endif
 
-    /* Enqueue the process */
-    enqueue_process(add_runq, p);
+	ERTS_DBG_CHK_PROCS_RUNQ_NOPROC(runq, p);
+#ifndef ERTS_SMP
+	/* Never schedule a suspended process (ok in smp case) */
+	ASSERT(ERTS_PROC_IS_EXITING(p) || p->rcount == 0);
+	add_runq = runq;
+#else
+	ASSERT(!p->bound_runq || p->bound_runq == p->run_queue);
+	if (p->bound_runq) {
+		if (p->bound_runq == runq)
+			add_runq = runq;
+		else {
+			add_runq = p->bound_runq;
+			erts_smp_xrunq_lock(runq, add_runq);
+		}
+	}
+	else {
+		add_runq = erts_check_emigration_need(runq, p->prio);
+		if (!add_runq)
+			add_runq = runq;
+		else /* Process emigrated */{
+#ifdef USE_VM_PROBES
+			dtrace_process_migration(p, runq, add_runq);
+#endif
+			p->run_queue = add_runq;
+		}
+	}
+#endif
 
-    if ((erts_system_profile_flags.runnable_procs)
-	&& (prev_status == P_WAITING
-	    || prev_status == P_SUSPENDED)) {
-    	profile_runnable_proc(p, am_active);
-    }
+	/* Enqueue the process */
+	enqueue_process(add_runq, p);
 
-    if (add_runq != runq)
-	erts_smp_runq_unlock(add_runq);
+	if ((erts_system_profile_flags.runnable_procs)
+			&& (prev_status == P_WAITING || prev_status == P_SUSPENDED)) {
+		profile_runnable_proc(p, am_active );
+	}
 
-    return add_runq;
+	if (add_runq != runq)
+		erts_smp_runq_unlock(add_runq);
+
+	return add_runq;
 }
 
 
@@ -6344,6 +6364,10 @@ erts_proc_migrate(Process *p, ErtsProcLocks *plcks,
     dequeue_process(from_rq, p);
     p->run_queue = to_rq;
     enqueue_process(to_rq, p);
+
+#ifdef USE_VM_PROBES
+    dtrace_process_migration(p, from_rq, to_rq);
+#endif
 
     return ERTS_MIGRATE_SUCCESS;
 }

@@ -331,6 +331,15 @@ provider erlang {
      */
     probe process__heap_shrink(char *p, int old_size, int new_size);
 
+
+    probe process__migration(char *p, int old_scheduler, in new_scheduler);
+
+
+    /* Scheduler related probes */
+    probe scheduler__active(int scheduler);
+    probe scheduler__inactive(int scheduler);
+
+
     /* network distribution */
 
     /**

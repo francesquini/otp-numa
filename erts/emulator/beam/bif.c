@@ -1536,50 +1536,54 @@ BIF_RETTYPE process_flag_2(BIF_ALIST_2)
        BIF_RET(old_value);
    }
    else if (BIF_ARG_1 == am_scheduler) {
-       int yield;
-       ErtsRunQueue *old;
-       ErtsRunQueue *new;
-       Sint sched;
-       if (!is_small(BIF_ARG_2))
-	   goto error;
-       sched = signed_val(BIF_ARG_2);
-       if (sched < 0 || erts_no_schedulers < sched)
-	   goto error;
-       erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_STATUS);
-       old = BIF_P->bound_runq;
+	   int yield;
+	   ErtsRunQueue *old;
+	   ErtsRunQueue *new;
+	   Sint sched;
+	   if (!is_small(BIF_ARG_2))
+		   goto error;
+	   sched = signed_val(BIF_ARG_2);
+	   if (sched < 0 || erts_no_schedulers < sched)
+		   goto error;
+	   erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_STATUS);
+	   old = BIF_P->bound_runq;
 #ifdef ERTS_SMP
-       ASSERT(!old || old == BIF_P->run_queue);
+	   ASSERT(!old || old == BIF_P->run_queue);
 #endif
-       new = !sched ? NULL : erts_schedid2runq(sched);
+	   new = !sched ? NULL : erts_schedid2runq(sched);
 #ifndef ERTS_SMP
-       yield = 0;
-#else
-       if (new == old)
 	   yield = 0;
-       else {
-	   ErtsRunQueue *curr = BIF_P->run_queue;
-	   if (!new)
-	       erts_smp_runq_lock(curr);
-	   else
-	       erts_smp_runqs_lock(curr, new);
-	   yield = new && BIF_P->run_queue != new;
+#else
+	   if (new == old)
+		   yield = 0;
+	   else {
+		   ErtsRunQueue *curr = BIF_P->run_queue;
+		   if (!new)
+			   erts_smp_runq_lock(curr);
+		   else
+			   erts_smp_runqs_lock(curr, new);
+		   yield = new && BIF_P->run_queue != new;
 #endif
-	   BIF_P->bound_runq = new;
+		   BIF_P->bound_runq = new;
 #ifdef ERTS_SMP
-	   if (new)
-	       BIF_P->run_queue = new;
-	   if (!new)
-	       erts_smp_runq_unlock(curr);
-	   else
-	       erts_smp_runqs_unlock(curr, new);
-       }
+		   if (new) {
+			   BIF_P->run_queue = new;
+#ifdef USE_VM_PROBES
+			   dtrace_process_migration(BIF_P, curr, new);
 #endif
-       erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_STATUS);
-       old_value = old ? make_small(old->ix+1) : make_small(0);
-       if (yield)
-	   ERTS_BIF_YIELD_RETURN_X(BIF_P, old_value, am_scheduler);
-       else
-	   BIF_RET(old_value);
+		   }
+		   if (!new)
+			   erts_smp_runq_unlock(curr);
+		   else
+			   erts_smp_runqs_unlock(curr, new);
+	   }
+#endif
+	   erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_STATUS);
+	   old_value = old ? make_small(old->ix+1) : make_small(0);
+	   if (yield)
+		   ERTS_BIF_YIELD_RETURN_X(BIF_P, old_value, am_scheduler);
+	   else
+		   BIF_RET(old_value);
    }
    else if (BIF_ARG_1 == am_min_heap_size) {
        Sint i;
