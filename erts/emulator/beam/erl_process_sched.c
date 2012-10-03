@@ -2,6 +2,7 @@
 #include "erl_process_sched_ip.h"
 #include "erl_process_sched_mig.h"
 #include "erl_process_sched_ws.h"
+#include "dtrace-wrapper.h"
 
 
 /*
@@ -68,6 +69,10 @@ int proc_sched_get_migration_strategy(void) {
 }
 
 void proc_sched_check_balance (ErtsRunQueue *rq) {
+#ifdef USE_VM_PROBES
+	//if (DTRACE_ENABLED(scheduler_check_balance))
+		DTRACE1(scheduler_check_balance, rq->ix + 1);
+#endif
 	PROC_SCHED_CURR_MIGR_STG_CB_FUN(rq);
 }
 
@@ -105,6 +110,10 @@ int proc_sched_get_ws_strategy (void) {
 }
 
 int proc_sched_work_stealing(ErtsRunQueue* rq) {
+#ifdef USE_VM_PROBES
+//	if (DTRACE_ENABLED(scheduler_work_stealing))
+		DTRACE1(scheduler_work_stealing, rq->ix + 1);
+#endif
 	return PROC_SCHED_CURR_WS_STG_FUN(rq);
 }
 
