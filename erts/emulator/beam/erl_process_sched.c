@@ -4,6 +4,14 @@
 #include "erl_process_sched_ws.h"
 #include "dtrace-wrapper.h"
 
+/*
+ * Initialization
+ */
+#ifdef ERTS_SMP
+void proc_sched_initialize(Uint nQueues, balance_info_type* b_info) {
+	 proc_sched_migrate_initialize(nQueues, b_info);
+}
+#endif
 
 /*
  * Initial Placement Strategies
@@ -79,7 +87,6 @@ void proc_sched_check_balance (ErtsRunQueue *rq) {
 void proc_sched_immigrate (ErtsRunQueue *rq) {
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
 }
-
 
 
 /*

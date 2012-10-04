@@ -189,6 +189,9 @@ extern int erts_sched_thread_suggested_stack_size;
 #define ERTS_RUNQ_IFLG_SUSPENDED		(((erts_aint32_t) 1) << 0)
 #define ERTS_RUNQ_IFLG_NONEMPTY			(((erts_aint32_t) 1) << 1)
 
+#define ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED (2000*CONTEXT_REDS)
+#define ERTS_RUNQ_CALL_CHECK_BALANCE_REDS \
+  (ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED/2)
 
 #ifdef DEBUG
 #  if defined(ARCH_64) && !HALFWORD_HEAP
@@ -278,6 +281,7 @@ struct ErtsSchedulerSleepInfo_ {
 #endif
     erts_atomic32_t aux_work;
 };
+
 
 /* times to reschedule low prio process before running */
 #define RESCHEDULE_LOW        8
@@ -377,6 +381,54 @@ typedef union {
 } ErtsAlignedRunQueue;
 
 extern ErtsAlignedRunQueue *erts_aligned_run_queues;
+
+#define ERTS_SCHED_SLEEP_INFO_IX(IX)					\
+    (ASSERT_EXPR(-1 <= ((int) (IX))					\
+		 && ((int) (IX)) < ((int) erts_no_schedulers)),		\
+     &aligned_sched_sleep_info[(IX)].ssi)
+
+#define ERTS_FOREACH_RUNQ(RQVAR, DO)					\
+do {									\
+    ErtsRunQueue *RQVAR;						\
+    int ix__;								\
+    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++) {			\
+	RQVAR = ERTS_RUNQ_IX(ix__);					\
+	erts_smp_runq_lock(RQVAR);					\
+	{ DO; }								\
+	erts_smp_runq_unlock(RQVAR);					\
+    }									\
+} while (0)
+
+#define ERTS_FOREACH_OP_RUNQ(RQVAR, DO)					\
+do {									\
+    ErtsRunQueue *RQVAR;						\
+    int ix__;								\
+    ERTS_SMP_LC_ASSERT(erts_smp_lc_mtx_is_locked(&schdlr_sspnd.mtx));	\
+    for (ix__ = 0; ix__ < schdlr_sspnd.online; ix__++) {		\
+	RQVAR = ERTS_RUNQ_IX(ix__);					\
+	erts_smp_runq_lock(RQVAR);					\
+	{ DO; }								\
+	erts_smp_runq_unlock(RQVAR);					\
+    }									\
+} while (0)
+
+#define ERTS_ATOMIC_FOREACH_RUNQ_X(RQVAR, DO, DOX)			\
+do {									\
+    ErtsRunQueue *RQVAR;						\
+    int ix__;								\
+    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++) {			\
+	RQVAR = ERTS_RUNQ_IX(ix__);					\
+	erts_smp_runq_lock(RQVAR);					\
+	{ DO; }								\
+    }									\
+    { DOX; }								\
+    for (ix__ = 0; ix__ < erts_no_run_queues; ix__++)			\
+	erts_smp_runq_unlock(ERTS_RUNQ_IX(ix__));			\
+} while (0)
+
+#define ERTS_ATOMIC_FOREACH_RUNQ(RQVAR, DO) \
+  ERTS_ATOMIC_FOREACH_RUNQ_X(RQVAR, DO, )
+
 
 #define ERTS_PROC_REDUCTIONS_EXECUTED(RQ, PRIO, REDS, AREDS)	\
 do {								\
@@ -759,6 +811,7 @@ struct process {
 #ifdef HIPE
     struct hipe_process_state_smp hipe_smp;
 #endif
+
 #endif
 
 #ifdef CHECK_FOR_HOLES
@@ -1128,6 +1181,7 @@ void erts_start_schedulers(void);
 void erts_alloc_notify_delayed_dealloc(int);
 void erts_smp_notify_check_children_needed(void);
 #endif
+
 #if ERTS_USE_ASYNC_READY_Q
 void erts_notify_check_async_ready_queue(void *);
 #endif
@@ -1400,9 +1454,27 @@ ErtsRunQueue *erts_prepare_emigrate(ErtsRunQueue *c_rq,
 ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 							 int prio);
 
-void check_balance(ErtsRunQueue *rq);
 void immigrate(ErtsRunQueue *rq);
 int try_steal_task(ErtsRunQueue *rq);
+
+typedef struct struct_balance_info {
+    erts_smp_mtx_t update_mtx;
+    erts_smp_atomic32_t no_runqs;
+    int last_active_runqs;
+    int forced_check_balance;
+    erts_smp_atomic32_t checking_balance;
+    int halftime;
+    int full_reds_history_index;
+    struct {
+	int active_runqs;
+	int reds;
+	int max_len;
+    } prev_rise;
+    Uint n;
+} balance_info_type;
+
+ERTS_INLINE void get_no_runqs(int *active, int *used);
+ERTS_INLINE void set_no_active_runqs(int active);
 
 #ifdef USE_VM_PROBES
 void dtrace_process_migration(Process *p, ErtsRunQueue *from, ErtsRunQueue *to);

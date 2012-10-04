@@ -7,6 +7,10 @@
 
 #include "erl_process.h"
 
+#ifdef ERTS_SMP
+ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, balance_info_type* b_info);
+#endif
+
 void proc_sched_migrate_default_cb(ErtsRunQueue* rq);
 void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
 

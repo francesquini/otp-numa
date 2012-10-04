@@ -2,7 +2,46 @@
 
 /*This file contains the implementation of the migration strategies*/
 
-/*Common state variables*/
+#ifdef ERTS_SMP
+/* Run queue balancing */
+typedef struct {
+	Uint32 flags;
+	struct {
+		int max_len;
+		int avail;
+		int reds;
+		int migration_limit;
+		int emigrate_to;
+		int immigrate_from;
+	} prio[ERTS_NO_PRIO_LEVELS];
+	int reds;
+	int full_reds;
+	int full_reds_history_sum;
+	int full_reds_history_change;
+	int oowc;
+	int max_len;
+} ErtsRunQueueBalance;
+static ErtsRunQueueBalance *run_queue_info;
+
+typedef struct {
+	int qix;
+	int len;
+} ErtsRunQueueCompare;
+static ErtsRunQueueCompare *run_queue_compare;
+
+
+static balance_info_type* balance_info;
+
+ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, balance_info_type* b_info) {
+	balance_info = b_info;
+	if (erts_no_run_queues != 1) {
+		run_queue_info = erts_alloc(ERTS_ALC_T_RUNQ_BLNS,
+				sizeof(ErtsRunQueueBalance) * nQueues);
+		run_queue_compare = erts_alloc(ERTS_ALC_T_RUNQ_BLNS,
+				sizeof(ErtsRunQueueCompare) * nQueues);
+	}
+}
+#endif
 
 /***************************
  ***************************
@@ -10,9 +49,14 @@
  ***************************
  ***************************/
 
+//Forward declaration
+#ifdef ERTS_SMP
+static ERTS_INLINE void default_check_balance(ErtsRunQueue *rq);
+#endif
+
 void proc_sched_migrate_default_cb(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
-	check_balance(rq);
+	default_check_balance(rq);
 #endif
 }
 
@@ -35,3 +79,518 @@ void proc_sched_migrate_disabled_cb(ErtsRunQueue* rq) {
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* ign) {
 	//nothing to be done
 }
+
+/***************************************************************************************
+ * Default implementation
+ ***************************************************************************************/
+
+#ifdef ERTS_SMP
+static int rqc_len_cmp(const void *x, const void *y) {
+	return ((ErtsRunQueueCompare *) x)->len - ((ErtsRunQueueCompare *) y)->len;
+}
+
+#define ERTS_PERCENT(X, Y) \
+		((Y) == 0 \
+				? ((X) == 0 ? 100 : INT_MAX) \
+						: ((100*(X))/(Y)))
+
+#define ERTS_UPDATE_FULL_REDS(QIX, LAST_REDS)				\
+		do {									\
+			run_queue_info[(QIX)].full_reds					\
+			= run_queue_info[(QIX)].full_reds_history_sum;			\
+			run_queue_info[(QIX)].full_reds += (LAST_REDS);			\
+			run_queue_info[(QIX)].full_reds					\
+			>>= ERTS_FULL_REDS_HISTORY_AVG_SHFT;				\
+			run_queue_info[(QIX)].full_reds_history_sum				\
+			-= run_queue_info[(QIX)].full_reds_history_change;		\
+			run_queue_info[(QIX)].full_reds_history_sum += (LAST_REDS);		\
+			run_queue_info[(QIX)].full_reds_history_change = (LAST_REDS);	\
+		} while (0)
+
+#define ERTS_DBG_CHK_FULL_REDS_HISTORY(RQ)				\
+		do {									\
+			int sum__ = 0;							\
+			int rix__;								\
+			for (rix__ = 0; rix__ < ERTS_FULL_REDS_HISTORY_SIZE; rix__++)	\
+			sum__ += (RQ)->full_reds_history[rix__];			\
+			ASSERT(sum__ == (RQ)->full_reds_history_sum);			\
+		} while (0);
+
+#define ERTS_BLNCE_SAVE_RISE(ACTIVE, MAX_LEN, REDS)	\
+do {							\
+    balance_info->prev_rise.active_runqs = (ACTIVE);	\
+    balance_info->prev_rise.max_len = (MAX_LEN);		\
+    balance_info->prev_rise.reds = (REDS);		\
+} while (0)
+
+static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
+#if ERTS_MAX_PROCESSES >= (1 << 27)
+#  error check_balance() assumes ERTS_MAX_PROCESS < (1 << 27)
+#endif
+	ErtsRunQueueBalance avg = { 0 };
+	Sint64 scheds_reds, full_scheds_reds;
+	int forced, active, current_active, oowc, half_full_scheds, full_scheds,
+	mmax_len, blnc_no_rqs, qix, pix, freds_hist_ix;
+
+	if (erts_smp_atomic32_xchg_nob(&balance_info->checking_balance, 1)) {
+		c_rq->check_balance_reds = INT_MAX;
+		return;
+	}
+
+	get_no_runqs(NULL, &blnc_no_rqs);
+	if (blnc_no_rqs == 1) {
+		c_rq->check_balance_reds = INT_MAX;
+		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+		return;
+	}
+
+	erts_smp_runq_unlock(c_rq);
+
+	if (balance_info->halftime) {
+		balance_info->halftime = 0;
+		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+		ERTS_FOREACH_RUNQ(rq,
+				{
+						if (rq->waiting)
+							rq->flags |= ERTS_RUNQ_FLG_HALFTIME_OUT_OF_WORK;
+						else
+							rq->flags &= ~ERTS_RUNQ_FLG_HALFTIME_OUT_OF_WORK;
+						rq->check_balance_reds = ERTS_RUNQ_CALL_CHECK_BALANCE_REDS;
+				});
+
+		erts_smp_runq_lock(c_rq);
+		return;
+	}
+
+	/*
+	 * check_balance() is never called in more threads
+	 * than one at a time, i.e., we will normally never
+	 * get any conflicts on the balance_info.update_mtx.
+	 * However, when blocking multi scheduling (which performance
+	 * critical applications do *not* do) migration information
+	 * is manipulated. Such updates of the migration information
+	 * might clash with balancing.
+	 */
+	erts_smp_mtx_lock(&balance_info->update_mtx);
+
+	forced = balance_info->forced_check_balance;
+	balance_info->forced_check_balance = 0;
+
+	get_no_runqs(&current_active, &blnc_no_rqs);
+
+	if (blnc_no_rqs == 1) {
+		erts_smp_mtx_unlock(&balance_info->update_mtx);
+		erts_smp_runq_lock(c_rq);
+		c_rq->check_balance_reds = INT_MAX;
+		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+		return;
+	}
+
+	freds_hist_ix = balance_info->full_reds_history_index;
+	balance_info->full_reds_history_index++;
+	if (balance_info->full_reds_history_index >= ERTS_FULL_REDS_HISTORY_SIZE)
+		balance_info->full_reds_history_index = 0;
+
+	/* Read balance information for all run queues */
+	for (qix = 0; qix < blnc_no_rqs; qix++) {
+		ErtsRunQueue *rq = ERTS_RUNQ_IX(qix);
+		erts_smp_runq_lock(rq);
+
+		run_queue_info[qix].flags = rq->flags;
+		for (pix = 0; pix < ERTS_NO_PROC_PRIO_LEVELS; pix++) {
+			run_queue_info[qix].prio[pix].max_len =
+					rq->procs.prio_info[pix].max_len;
+			run_queue_info[qix].prio[pix].reds = rq->procs.prio_info[pix].reds;
+		}
+		run_queue_info[qix].prio[ERTS_PORT_PRIO_LEVEL].max_len =
+				rq->ports.info.max_len;
+		run_queue_info[qix].prio[ERTS_PORT_PRIO_LEVEL].reds =
+				rq->ports.info.reds;
+
+		run_queue_info[qix].full_reds_history_sum = rq->full_reds_history_sum;
+		run_queue_info[qix].full_reds_history_change =
+				rq->full_reds_history[freds_hist_ix];
+
+		run_queue_info[qix].oowc = rq->out_of_work_count;
+		run_queue_info[qix].max_len = rq->max_len;
+		rq->check_balance_reds = INT_MAX;
+
+		erts_smp_runq_unlock(rq);
+	}
+
+	full_scheds = 0;
+	half_full_scheds = 0;
+	full_scheds_reds = 0;
+	scheds_reds = 0;
+	oowc = 0;
+	mmax_len = 0;
+
+	/* Calculate availability for each priority in each run queues */
+	for (qix = 0; qix < blnc_no_rqs; qix++) {
+		int treds = 0;
+
+		if (run_queue_info[qix].flags & ERTS_RUNQ_FLG_OUT_OF_WORK) {
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+				run_queue_info[qix].prio[pix].avail = 100;
+				treds += run_queue_info[qix].prio[pix].reds;
+			}
+			if (!(run_queue_info[qix].flags
+					& ERTS_RUNQ_FLG_HALFTIME_OUT_OF_WORK))
+				half_full_scheds++;
+			ERTS_UPDATE_FULL_REDS(qix, ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED);
+		} else {
+			ASSERT(!(run_queue_info[qix].flags & ERTS_RUNQ_FLG_HALFTIME_OUT_OF_WORK));
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++)
+				treds += run_queue_info[qix].prio[pix].reds;
+			if (treds == 0) {
+				for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++)
+					run_queue_info[qix].prio[pix].avail = 0;
+			} else {
+				Sint64 xreds = 0;
+				Sint64 procreds = treds;
+				procreds -=
+						((Sint64) run_queue_info[qix].prio[ERTS_PORT_PRIO_LEVEL].reds);
+
+				for (pix = 0; pix < ERTS_NO_PROC_PRIO_LEVELS; pix++) {
+					Sint64 av;
+
+					if (xreds == 0)
+						av = 100;
+					else if (procreds == xreds)
+						av = 0;
+					else {
+						av = (100 * (procreds - xreds)) / procreds;
+						if (av == 0)
+							av = 1;
+					}
+					run_queue_info[qix].prio[pix].avail = (int) av;
+					ASSERT(run_queue_info[qix].prio[pix].avail >= 0);
+					if (pix < PRIORITY_NORMAL) /* ie., max or high */
+						xreds += (Sint64) run_queue_info[qix].prio[pix].reds;
+				}
+				run_queue_info[qix].prio[ERTS_PORT_PRIO_LEVEL].avail = 100;
+			}
+			ERTS_UPDATE_FULL_REDS(qix, treds);
+			full_scheds_reds += run_queue_info[qix].full_reds;
+			full_scheds++;
+			half_full_scheds++;
+		}
+		run_queue_info[qix].reds = treds;
+		scheds_reds += treds;
+		oowc += run_queue_info[qix].oowc;
+		if (mmax_len < run_queue_info[qix].max_len)
+			mmax_len = run_queue_info[qix].max_len;
+	}
+
+	if (!erts_sched_compact_load)
+		goto all_active;
+
+	if (!forced && half_full_scheds != blnc_no_rqs) {
+		int min = 1;
+		if (min < half_full_scheds)
+			min = half_full_scheds;
+		if (full_scheds) {
+			active = (scheds_reds - 1) / ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED
+					+ 1;
+		} else {
+			active = balance_info->last_active_runqs - 1;
+		}
+
+		if (balance_info->last_active_runqs < current_active) {
+			ERTS_BLNCE_SAVE_RISE(current_active, mmax_len, scheds_reds);
+			active = current_active;
+		} else if (active < balance_info->prev_rise.active_runqs) {
+			if (ERTS_PERCENT(mmax_len,
+					balance_info->prev_rise.max_len) >= 90
+					&& ERTS_PERCENT(scheds_reds,
+							balance_info->prev_rise.reds) >= 90) {
+				active = balance_info->prev_rise.active_runqs;
+			}
+		}
+
+		if (active < min)
+			active = min;
+		else if (active > blnc_no_rqs)
+			active = blnc_no_rqs;
+
+		if (active == blnc_no_rqs)
+			goto all_active;
+
+		for (qix = 0; qix < active; qix++) {
+			run_queue_info[qix].flags = 0;
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+				run_queue_info[qix].prio[pix].emigrate_to = -1;
+				run_queue_info[qix].prio[pix].immigrate_from = -1;
+				run_queue_info[qix].prio[pix].migration_limit = 0;
+			}
+		}
+		for (qix = active; qix < blnc_no_rqs; qix++) {
+			run_queue_info[qix].flags = ERTS_RUNQ_FLG_INACTIVE;
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+				int tix = qix % active;
+				ERTS_SET_RUNQ_FLG_EMIGRATE(run_queue_info[qix].flags, pix);
+				run_queue_info[qix].prio[pix].emigrate_to = tix;
+				run_queue_info[qix].prio[pix].immigrate_from = -1;
+				run_queue_info[qix].prio[pix].migration_limit = 0;
+			}
+		}
+	} else {
+		if (balance_info->last_active_runqs < current_active)
+			ERTS_BLNCE_SAVE_RISE(current_active, mmax_len, scheds_reds);
+		all_active:
+
+		active = blnc_no_rqs;
+
+		for (qix = 0; qix < blnc_no_rqs; qix++) {
+
+			if (full_scheds_reds > 0) {
+				/* Calculate availability compared to other schedulers */
+				if (!(run_queue_info[qix].flags & ERTS_RUNQ_FLG_OUT_OF_WORK)) {
+					Sint64 tmp = ((Sint64) run_queue_info[qix].full_reds
+							* (Sint64) full_scheds);
+					for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+						Sint64 avail = run_queue_info[qix].prio[pix].avail;
+						avail = (avail * tmp) / full_scheds_reds;
+						ASSERT(avail >= 0);
+						run_queue_info[qix].prio[pix].avail = (int) avail;
+					}
+				}
+			}
+
+			/* Calculate average max length */
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+				run_queue_info[qix].prio[pix].emigrate_to = -1;
+				run_queue_info[qix].prio[pix].immigrate_from = -1;
+				avg.prio[pix].max_len += run_queue_info[qix].prio[pix].max_len;
+				avg.prio[pix].avail += run_queue_info[qix].prio[pix].avail;
+			}
+
+		}
+
+		for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+			int max_len = avg.prio[pix].max_len;
+			if (max_len != 0) {
+				int avail = avg.prio[pix].avail;
+				if (avail != 0) {
+					max_len = (int) ((100 * ((Sint64) max_len) - 1)
+							/ ((Sint64) avail)) + 1;
+					avg.prio[pix].max_len = max_len;
+					ASSERT(max_len >= 0);
+				}
+			}
+		}
+
+		/* Calculate migration limits for all priority queues in all
+		 run queues */
+		for (qix = 0; qix < blnc_no_rqs; qix++) {
+			run_queue_info[qix].flags = 0; /* Reset for later use... */
+			for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+				int limit;
+				if (avg.prio[pix].max_len == 0
+						|| run_queue_info[qix].prio[pix].avail == 0)
+					limit = 0;
+				else
+					limit = (int) (((((Sint64) avg.prio[pix].max_len)
+							* ((Sint64) run_queue_info[qix].prio[pix].avail))
+							- 1) / 100 + 1);
+				run_queue_info[qix].prio[pix].migration_limit = limit;
+			}
+		}
+
+		/* Setup migration paths for all priorities */
+		for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+			int low = 0, high = 0;
+			for (qix = 0; qix < blnc_no_rqs; qix++) {
+				int len_diff = run_queue_info[qix].prio[pix].max_len;
+				len_diff -= run_queue_info[qix].prio[pix].migration_limit;
+#ifdef DBG_PRINT
+				if (pix == 2) erts_fprintf(stderr, "%d ", len_diff);
+#endif
+				run_queue_compare[qix].qix = qix;
+				run_queue_compare[qix].len = len_diff;
+				if (len_diff != 0) {
+					if (len_diff < 0)
+						low++;
+					else
+						high++;
+				}
+			}
+#ifdef DBG_PRINT
+			if (pix == 2) erts_fprintf(stderr, "\n");
+#endif
+			if (low && high) {
+				int from_qix;
+				int to_qix;
+				int eof = 0;
+				int eot = 0;
+				int tix = 0;
+				int fix = blnc_no_rqs - 1;
+				qsort(run_queue_compare, blnc_no_rqs,
+						sizeof(ErtsRunQueueCompare), rqc_len_cmp);
+
+				while (1) {
+					if (run_queue_compare[fix].len <= 0)
+						eof = 1;
+					if (run_queue_compare[tix].len >= 0)
+						eot = 1;
+					if (eof || eot)
+						break;
+					from_qix = run_queue_compare[fix].qix;
+					to_qix = run_queue_compare[tix].qix;
+					if (run_queue_info[from_qix].prio[pix].avail == 0) {
+						ERTS_SET_RUNQ_FLG_EVACUATE(
+								run_queue_info[from_qix].flags, pix);
+						ERTS_SET_RUNQ_FLG_EVACUATE(run_queue_info[to_qix].flags,
+								pix);
+					}
+					ERTS_SET_RUNQ_FLG_EMIGRATE(run_queue_info[from_qix].flags,
+							pix);
+					ERTS_SET_RUNQ_FLG_IMMIGRATE(run_queue_info[to_qix].flags,
+							pix);
+					run_queue_info[from_qix].prio[pix].emigrate_to = to_qix;
+					run_queue_info[to_qix].prio[pix].immigrate_from = from_qix;
+					tix++;
+					fix--;
+
+#ifdef DBG_PRINT
+					if (pix == 2) erts_fprintf(stderr, "%d >--> %d\n", from_qix, to_qix);
+#endif
+				}
+
+				if (!eot && eof) {
+					if (fix < blnc_no_rqs - 1)
+						fix++;
+
+					if (run_queue_compare[fix].len > 0) {
+						int fix2 = -1;
+						while (tix < fix) {
+							if (run_queue_compare[tix].len >= 0)
+								break;
+							if (fix2 < fix)
+								fix2 = blnc_no_rqs - 1;
+							from_qix = run_queue_compare[fix2].qix;
+							to_qix = run_queue_compare[tix].qix;
+							ASSERT(to_qix != from_qix);
+							if (run_queue_info[from_qix].prio[pix].avail == 0)
+								ERTS_SET_RUNQ_FLG_EVACUATE(
+										run_queue_info[to_qix].flags, pix);
+							ERTS_SET_RUNQ_FLG_IMMIGRATE(
+									run_queue_info[to_qix].flags, pix);
+							run_queue_info[to_qix].prio[pix].immigrate_from =
+									from_qix;
+							tix++;
+							fix2--;
+#ifdef DBG_PRINT
+							if (pix == 2) erts_fprintf(stderr, "%d  --> %d\n", from_qix, to_qix);
+#endif
+						}
+					}
+				} else if (!eof && eot) {
+					if (tix > 0)
+						tix--;
+					if (run_queue_compare[tix].len < 0) {
+						int tix2 = 0;
+						while (tix < fix) {
+							if (run_queue_compare[fix].len <= 0)
+								break;
+							if (tix2 > tix)
+								tix2 = 0;
+							from_qix = run_queue_compare[fix].qix;
+							to_qix = run_queue_compare[tix2].qix;
+							ASSERT(to_qix != from_qix);
+							if (run_queue_info[from_qix].prio[pix].avail == 0)
+								ERTS_SET_RUNQ_FLG_EVACUATE(
+										run_queue_info[from_qix].flags, pix);
+							ERTS_SET_RUNQ_FLG_EMIGRATE(
+									run_queue_info[from_qix].flags, pix);
+							run_queue_info[from_qix].prio[pix].emigrate_to =
+									to_qix;
+							fix--;
+							tix2++;
+#ifdef DBG_PRINT
+							if (pix == 2) erts_fprintf(stderr, "%d >--  %d\n", from_qix, to_qix);
+#endif
+
+						}
+					}
+				}
+			}
+		}
+
+#ifdef DBG_PRINT
+		erts_fprintf(stderr, "--------------------------------\n");
+#endif
+	}
+
+	balance_info->last_active_runqs = active;
+	set_no_active_runqs(active);
+
+	balance_info->halftime = 1;
+	erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+
+	/* Write migration paths and reset balance statistics in all queues */
+	for (qix = 0; qix < blnc_no_rqs; qix++) {
+		int mqix;
+		Uint32 flags;
+		ErtsRunQueue *rq = ERTS_RUNQ_IX(qix);
+		ErtsRunQueueInfo *rqi;
+		flags = run_queue_info[qix].flags;
+		erts_smp_runq_lock(rq);
+		flags |= (rq->flags & ~ERTS_RUNQ_FLGS_MIGRATION_INFO);
+		ASSERT(!(flags & ERTS_RUNQ_FLG_OUT_OF_WORK));
+		if (rq->waiting)
+			flags |= ERTS_RUNQ_FLG_OUT_OF_WORK;
+
+		rq->full_reds_history_sum = run_queue_info[qix].full_reds_history_sum;
+		rq->full_reds_history[freds_hist_ix] =
+				run_queue_info[qix].full_reds_history_change;
+
+		ERTS_DBG_CHK_FULL_REDS_HISTORY(rq);
+
+		rq->out_of_work_count = 0;
+		rq->flags = flags;
+		rq->max_len = rq->len;
+		for (pix = 0; pix < ERTS_NO_PRIO_LEVELS; pix++) {
+			rqi = (pix == ERTS_PORT_PRIO_LEVEL ?
+					&rq->ports.info : &rq->procs.prio_info[pix]);
+			rqi->max_len = rqi->len;
+			rqi->reds = 0;
+			if (!(ERTS_CHK_RUNQ_FLG_EMIGRATE(flags, pix)
+					| ERTS_CHK_RUNQ_FLG_IMMIGRATE(flags, pix))) {
+				ASSERT(run_queue_info[qix].prio[pix].immigrate_from < 0); ASSERT(run_queue_info[qix].prio[pix].emigrate_to < 0);
+#ifdef DEBUG
+				rqi->migrate.limit.this = -1;
+				rqi->migrate.limit.other = -1;
+				ERTS_DBG_SET_INVALID_RUNQP(rqi->migrate.runq, 0x2);
+#endif
+			} else if (ERTS_CHK_RUNQ_FLG_EMIGRATE(flags, pix)) {
+				ASSERT(!ERTS_CHK_RUNQ_FLG_IMMIGRATE(flags, pix)); ASSERT(run_queue_info[qix].prio[pix].immigrate_from < 0); ASSERT(run_queue_info[qix].prio[pix].emigrate_to >= 0);
+
+				mqix = run_queue_info[qix].prio[pix].emigrate_to;
+				rqi->migrate.limit.this =
+						run_queue_info[qix].prio[pix].migration_limit;
+				rqi->migrate.limit.other =
+						run_queue_info[mqix].prio[pix].migration_limit;
+				rqi->migrate.runq = ERTS_RUNQ_IX(mqix);
+			} else {
+				ASSERT(ERTS_CHK_RUNQ_FLG_IMMIGRATE(flags, pix)); ASSERT(run_queue_info[qix].prio[pix].emigrate_to < 0); ASSERT(run_queue_info[qix].prio[pix].immigrate_from >= 0);
+
+				mqix = run_queue_info[qix].prio[pix].immigrate_from;
+				rqi->migrate.limit.this =
+						run_queue_info[qix].prio[pix].migration_limit;
+				rqi->migrate.limit.other =
+						run_queue_info[mqix].prio[pix].migration_limit;
+				rqi->migrate.runq = ERTS_RUNQ_IX(mqix);
+			}
+		}
+
+		rq->check_balance_reds = ERTS_RUNQ_CALL_CHECK_BALANCE_REDS;
+		erts_smp_runq_unlock(rq);
+	}
+
+	balance_info->n++;
+	erts_smp_mtx_unlock(&balance_info->update_mtx);
+
+	erts_smp_runq_lock(c_rq);
+}
+#endif
