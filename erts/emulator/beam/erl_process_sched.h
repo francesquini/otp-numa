@@ -12,8 +12,9 @@
  * Initialization
  ****************************************************
  ****************************************************/
+
 #ifdef ERTS_SMP
-void proc_sched_initialize(Uint nQueues, balance_info_type* b_info);
+void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online);
 #endif
 
 /****************************************************
@@ -72,3 +73,21 @@ int proc_sched_get_ws_strategy (void);
 int proc_sched_work_stealing(ErtsRunQueue*);
 
 #endif
+
+/****************************************************
+ ****************************************************
+ * Misc
+ ****************************************************
+ ****************************************************/
+#ifdef ERTS_SMP
+ERTS_INLINE void get_no_runqs(int *active, int *used);
+ERTS_INLINE void set_no_active_runqs(int active);
+ERTS_INLINE void set_no_used_runqs(int no_used);
+ERTS_INLINE void lock_balance_info(void);
+ERTS_INLINE void unlock_balance_info(void);
+ERTS_INLINE void force_check_balance(void);
+
+ERTS_INLINE int try_inc_no_active_runqs(int active);
+#endif
+
+ERTS_INLINE Uint erts_debug_nbalance(void);

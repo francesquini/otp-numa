@@ -29,17 +29,30 @@ typedef struct {
 } ErtsRunQueueCompare;
 static ErtsRunQueueCompare *run_queue_compare;
 
-
-static balance_info_type* balance_info;
-
-ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, balance_info_type* b_info) {
-	balance_info = b_info;
+ERTS_INLINE void proc_sched_migrate_initialize(Uint no_runqs, Uint no_schedulers, Uint no_schedulers_online) {
+	erts_aint32_t no_runqs_tmp;
 	if (erts_no_run_queues != 1) {
 		run_queue_info = erts_alloc(ERTS_ALC_T_RUNQ_BLNS,
-				sizeof(ErtsRunQueueBalance) * nQueues);
+				sizeof(ErtsRunQueueBalance) * no_runqs);
 		run_queue_compare = erts_alloc(ERTS_ALC_T_RUNQ_BLNS,
-				sizeof(ErtsRunQueueCompare) * nQueues);
+				sizeof(ErtsRunQueueCompare) * no_runqs);
 	}
+
+    no_runqs_tmp = (erts_aint32_t) (no_schedulers & ERTS_NO_RUNQS_MASK);
+    no_runqs_tmp |= (erts_aint32_t) ((no_schedulers_online & ERTS_NO_RUNQS_MASK) << ERTS_NO_USED_RUNQS_SHIFT);
+	erts_smp_atomic32_init_nob(&balance_info.no_runqs, no_runqs_tmp);
+
+	balance_info.last_active_runqs = no_schedulers;
+	erts_smp_mtx_init(&balance_info.update_mtx, "migration_info_update");
+	balance_info.forced_check_balance = 0;
+	balance_info.halftime = 1;
+	balance_info.full_reds_history_index = 0;
+	erts_smp_atomic32_init_nob(&balance_info.checking_balance, 0);
+	balance_info.prev_rise.active_runqs = 0;
+	balance_info.prev_rise.max_len = 0;
+	balance_info.prev_rise.reds = 0;
+	balance_info.n = 0;
+
 }
 #endif
 
@@ -118,37 +131,39 @@ static int rqc_len_cmp(const void *x, const void *y) {
 
 #define ERTS_BLNCE_SAVE_RISE(ACTIVE, MAX_LEN, REDS)	\
 do {							\
-    balance_info->prev_rise.active_runqs = (ACTIVE);	\
-    balance_info->prev_rise.max_len = (MAX_LEN);		\
-    balance_info->prev_rise.reds = (REDS);		\
+    balance_info.prev_rise.active_runqs = (ACTIVE);	\
+    balance_info.prev_rise.max_len = (MAX_LEN);		\
+    balance_info.prev_rise.reds = (REDS);		\
 } while (0)
 
+
 static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
-#if ERTS_MAX_PROCESSES >= (1 << 27)
-#  error check_balance() assumes ERTS_MAX_PROCESS < (1 << 27)
-#endif
+
 	ErtsRunQueueBalance avg = { 0 };
 	Sint64 scheds_reds, full_scheds_reds;
 	int forced, active, current_active, oowc, half_full_scheds, full_scheds,
 	mmax_len, blnc_no_rqs, qix, pix, freds_hist_ix;
 
-	if (erts_smp_atomic32_xchg_nob(&balance_info->checking_balance, 1)) {
+	//checks if some other scheduler is check-balancing
+	if (erts_smp_atomic32_xchg_nob(&balance_info.checking_balance, 1)) {
 		c_rq->check_balance_reds = INT_MAX;
 		return;
 	}
 
+	//if the number of online schedulers == 1, nothing to be done
 	get_no_runqs(NULL, &blnc_no_rqs);
 	if (blnc_no_rqs == 1) {
 		c_rq->check_balance_reds = INT_MAX;
-		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
 		return;
 	}
 
 	erts_smp_runq_unlock(c_rq);
 
-	if (balance_info->halftime) {
-		balance_info->halftime = 0;
-		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+	//Half-time. Checks if schedulers are active and flags them
+	if (balance_info.halftime) {
+		balance_info.halftime = 0;
+		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
 		ERTS_FOREACH_RUNQ(rq,
 				{
 						if (rq->waiting)
@@ -171,25 +186,26 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 	 * is manipulated. Such updates of the migration information
 	 * might clash with balancing.
 	 */
-	erts_smp_mtx_lock(&balance_info->update_mtx);
+	erts_smp_mtx_lock(&balance_info.update_mtx);
 
-	forced = balance_info->forced_check_balance;
-	balance_info->forced_check_balance = 0;
+	forced = balance_info.forced_check_balance;
+	balance_info.forced_check_balance = 0;
 
 	get_no_runqs(&current_active, &blnc_no_rqs);
 
+	//again, if the number of online-schedulers == 1, nothing to be balanced
 	if (blnc_no_rqs == 1) {
-		erts_smp_mtx_unlock(&balance_info->update_mtx);
+		erts_smp_mtx_unlock(&balance_info.update_mtx);
 		erts_smp_runq_lock(c_rq);
 		c_rq->check_balance_reds = INT_MAX;
-		erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
 		return;
 	}
 
-	freds_hist_ix = balance_info->full_reds_history_index;
-	balance_info->full_reds_history_index++;
-	if (balance_info->full_reds_history_index >= ERTS_FULL_REDS_HISTORY_SIZE)
-		balance_info->full_reds_history_index = 0;
+	freds_hist_ix = balance_info.full_reds_history_index;
+	balance_info.full_reds_history_index++;
+	if (balance_info.full_reds_history_index >= ERTS_FULL_REDS_HISTORY_SIZE)
+		balance_info.full_reds_history_index = 0;
 
 	/* Read balance information for all run queues */
 	for (qix = 0; qix < blnc_no_rqs; qix++) {
@@ -293,18 +309,18 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 			active = (scheds_reds - 1) / ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED
 					+ 1;
 		} else {
-			active = balance_info->last_active_runqs - 1;
+			active = balance_info.last_active_runqs - 1;
 		}
 
-		if (balance_info->last_active_runqs < current_active) {
+		if (balance_info.last_active_runqs < current_active) {
 			ERTS_BLNCE_SAVE_RISE(current_active, mmax_len, scheds_reds);
 			active = current_active;
-		} else if (active < balance_info->prev_rise.active_runqs) {
+		} else if (active < balance_info.prev_rise.active_runqs) {
 			if (ERTS_PERCENT(mmax_len,
-					balance_info->prev_rise.max_len) >= 90
+					balance_info.prev_rise.max_len) >= 90
 					&& ERTS_PERCENT(scheds_reds,
-							balance_info->prev_rise.reds) >= 90) {
-				active = balance_info->prev_rise.active_runqs;
+							balance_info.prev_rise.reds) >= 90) {
+				active = balance_info.prev_rise.active_runqs;
 			}
 		}
 
@@ -335,7 +351,7 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 			}
 		}
 	} else {
-		if (balance_info->last_active_runqs < current_active)
+		if (balance_info.last_active_runqs < current_active)
 			ERTS_BLNCE_SAVE_RISE(current_active, mmax_len, scheds_reds);
 		all_active:
 
@@ -522,11 +538,11 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 #endif
 	}
 
-	balance_info->last_active_runqs = active;
+	balance_info.last_active_runqs = active;
 	set_no_active_runqs(active);
 
-	balance_info->halftime = 1;
-	erts_smp_atomic32_set_nob(&balance_info->checking_balance, 0);
+	balance_info.halftime = 1;
+	erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
 
 	/* Write migration paths and reset balance statistics in all queues */
 	for (qix = 0; qix < blnc_no_rqs; qix++) {
@@ -588,8 +604,8 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 		erts_smp_runq_unlock(rq);
 	}
 
-	balance_info->n++;
-	erts_smp_mtx_unlock(&balance_info->update_mtx);
+	balance_info.n++;
+	erts_smp_mtx_unlock(&balance_info.update_mtx);
 
 	erts_smp_runq_lock(c_rq);
 }

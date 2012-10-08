@@ -87,23 +87,12 @@
 #include "erl_lock_count.h"
 #endif
 
-#define MAX_BIT       (1 << PRIORITY_MAX)
-#define HIGH_BIT      (1 << PRIORITY_HIGH)
-#define NORMAL_BIT    (1 << PRIORITY_NORMAL)
-#define LOW_BIT       (1 << PRIORITY_LOW)
-
 #define ERTS_MAYBE_SAVE_TERMINATING_PROCESS(P)			\
 do {								\
     ERTS_SMP_LC_ASSERT(erts_lc_mtx_is_locked(&proc_tab_mtx));	\
     if (saved_term_procs.end)					\
 	save_terminating_process((P));				\
 } while (0)
-
-#define ERTS_EMPTY_RUNQ(RQ) \
-  ((RQ)->len == 0 && (RQ)->misc.start == NULL)
-
-#define ERTS_EMPTY_RUNQ_PORTS(RQ) \
-  ((RQ)->ports.info.len == 0 && (RQ)->misc.start == NULL)
 
 extern BeamInstr beam_apply[];
 extern BeamInstr beam_exit[];
@@ -174,8 +163,6 @@ static struct {
     } msb; /* Multi Scheduling Block */
 } schdlr_sspnd;
 
-static balance_info_type balance_info;
-
 #endif
 
 erts_sched_stat_t erts_sched_stat;
@@ -187,13 +174,6 @@ static erts_tsd_key_t sched_data_key;
 static erts_smp_mtx_t proc_tab_mtx;
 
 static erts_smp_atomic32_t function_calls;
-
-#ifdef ERTS_SMP
-static erts_smp_atomic32_t doing_sys_schedule;
-static erts_smp_atomic32_t no_empty_run_queues;
-#else /* !ERTS_SMP */
-ErtsSchedulerData *erts_scheduler_data;
-#endif
 
 ErtsAlignedRunQueue *erts_aligned_run_queues;
 Uint erts_no_run_queues;
@@ -2340,75 +2320,6 @@ wake_scheduler(ErtsRunQueue *rq, int incq)
 	non_empty_runq(rq);
 }
 
-#define ERTS_NO_USED_RUNQS_SHIFT 16
-#define ERTS_NO_RUNQS_MASK 0xffff
-
-#if ERTS_MAX_NO_OF_SCHEDULERS > ERTS_NO_RUNQS_MASK
-#  error "Too large amount of schedulers allowed"
-#endif
-
-static ERTS_INLINE void
-init_no_runqs(int active, int used)
-{
-    erts_aint32_t no_runqs = (erts_aint32_t) (active & ERTS_NO_RUNQS_MASK);
-    no_runqs |= (erts_aint32_t) ((used & ERTS_NO_RUNQS_MASK) << ERTS_NO_USED_RUNQS_SHIFT);
-    erts_smp_atomic32_init_nob(&balance_info.no_runqs, no_runqs);
-}
-
-ERTS_INLINE void get_no_runqs(int *active, int *used) {
-    erts_aint32_t no_runqs = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
-    if (active)
-	*active = (int) (no_runqs & ERTS_NO_RUNQS_MASK);
-    if (used)
-	*used = (int) ((no_runqs >> ERTS_NO_USED_RUNQS_SHIFT) & ERTS_NO_RUNQS_MASK);
-}
-
-static ERTS_INLINE void
-set_no_used_runqs(int used)
-{
-    erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
-    while (1) {
-	erts_aint32_t act, new;
-	new = (used & ERTS_NO_RUNQS_MASK) << ERTS_NO_USED_RUNQS_SHIFT;
-	new |= exp & ERTS_NO_RUNQS_MASK;
-	act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
-	if (act == exp)
-	    break;
-	exp = act;
-    }
-}
-
-ERTS_INLINE void set_no_active_runqs(int active) {
-    erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
-    while (1) {
-	erts_aint32_t act, new;
-	new = exp & (ERTS_NO_RUNQS_MASK << ERTS_NO_USED_RUNQS_SHIFT);
-	new |= active & ERTS_NO_RUNQS_MASK;
-	act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
-	if (act == exp)
-	    break;
-	exp = act;
-    }
-}
-
-static ERTS_INLINE int
-try_inc_no_active_runqs(int active)
-{
-    erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
-    if (((exp >> ERTS_NO_USED_RUNQS_SHIFT) & ERTS_NO_RUNQS_MASK) < active)
-	return 0;
-    if ((exp & ERTS_NO_RUNQS_MASK) + 1 == active) {
-	erts_aint32_t new, act;
-	new = exp & (ERTS_NO_RUNQS_MASK << ERTS_NO_USED_RUNQS_SHIFT);
-	new |= active & ERTS_NO_RUNQS_MASK;
-	act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
-	if (act == exp)
-	    return 1;
-    }
-    return 0;
-}
-
-
 static ERTS_INLINE int
 chk_wake_sched(ErtsRunQueue *crq, int ix, int activate)
 {
@@ -2766,248 +2677,8 @@ evacuate_run_queue(ErtsRunQueue *evac_rq, ErtsRunQueue *rq)
     wake_scheduler(evac_rq, 0);
 }
 
-static int
-try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq)
-{
-    Process *proc;
-    int vrq_locked;
-
-    if (*rq_lockedp)
-	erts_smp_xrunq_lock(rq, vrq);
-    else
-	erts_smp_runq_lock(vrq);
-    vrq_locked = 1;
-
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
-
-    if (rq->halt_in_progress)
-	goto try_steal_port;
-
-    /*
-     * Check for a runnable process to steal...
-     */
-
-    switch (vrq->flags & ERTS_RUNQ_FLGS_PROCS_QMASK) {
-    case MAX_BIT:
-    case MAX_BIT|HIGH_BIT:
-    case MAX_BIT|NORMAL_BIT:
-    case MAX_BIT|LOW_BIT:
-    case MAX_BIT|HIGH_BIT|NORMAL_BIT:
-    case MAX_BIT|HIGH_BIT|LOW_BIT:
-    case MAX_BIT|NORMAL_BIT|LOW_BIT:
-    case MAX_BIT|HIGH_BIT|NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_MAX].last;
-	     proc;
-	     proc = proc->prev) {
-	    if (!proc->bound_runq)
-		break;
-	}
-	if (proc)
-	    break;
-    case HIGH_BIT:
-    case HIGH_BIT|NORMAL_BIT:
-    case HIGH_BIT|LOW_BIT:
-    case HIGH_BIT|NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_HIGH].last;
-	     proc;
-	     proc = proc->prev) {
-	    if (!proc->bound_runq)
-		break;
-	}
-	if (proc)
-	    break;
-    case NORMAL_BIT:
-    case LOW_BIT:
-    case NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_NORMAL].last;
-	     proc;
-	     proc = proc->prev) {
-	    if (!proc->bound_runq)
-		break;
-	}
-	if (proc)
-	    break;
-    case 0:
-	proc = NULL;
-	break;
-    default:
-	ASSERT(!"Invalid queue mask");
-	proc = NULL;
-	break;
-    }
-
-    if (proc) {
-	ErtsProcLocks proc_locks = 0;
-	int res;
-	ErtsMigrateResult mres;
-	mres = erts_proc_migrate(proc, &proc_locks,
-				 vrq, &vrq_locked,
-				 rq, rq_lockedp);
-	if (proc_locks)
-	    erts_smp_proc_unlock(proc, proc_locks);
-	res = !0;
-	switch (mres) {
-	case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-	    res = 0;
-	case ERTS_MIGRATE_SUCCESS:
-	    if (vrq_locked)
-		erts_smp_runq_unlock(vrq);
-	    return res;
-	default: /* Other failures */
-	    break;			
-	}
-    }
-
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
-
-    if (!vrq_locked) {
-	if (*rq_lockedp)
-	    erts_smp_xrunq_lock(rq, vrq);
-	else
-	    erts_smp_runq_lock(vrq);
-	vrq_locked = 1;
-    }
-
- try_steal_port:
-
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
-
-    /*
-     * Check for a runnable port to steal...
-     */
-
-    if (vrq->ports.info.len) {
-	Port *prt = vrq->ports.end;
-	int prt_locked = 0;
-	int res;
-	ErtsMigrateResult mres;
-
-	mres = erts_port_migrate(prt, &prt_locked,
-				 vrq, &vrq_locked,
-				 rq, rq_lockedp);
-	if (prt_locked)
-	    erts_smp_port_unlock(prt);
-	res = !0;
-	switch (mres) {
-	case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-	    res = 0;
-	case ERTS_MIGRATE_SUCCESS:
-	    if (vrq_locked)
-		erts_smp_runq_unlock(vrq);
-	    return res;
-	default: /* Other failures */
-	    break;			
-	}
-    }
-
-    if (vrq_locked)
-	erts_smp_runq_unlock(vrq);
-
-    return 0;
-}
-
-
-static ERTS_INLINE int
-check_possible_steal_victim(ErtsRunQueue *rq, int *rq_lockedp, int vix)
-{
-    ErtsRunQueue *vrq = ERTS_RUNQ_IX(vix);
-    erts_aint32_t iflgs = erts_smp_atomic32_read_nob(&vrq->info_flags);
-    if (iflgs & ERTS_RUNQ_IFLG_NONEMPTY)
-	return try_steal_task_from_victim(rq, rq_lockedp, vrq);
-    else
-	return 0;
-}
-
-
-int
-try_steal_task(ErtsRunQueue *rq)
-{
-    int res, rq_locked, vix, active_rqs, blnc_rqs;
-
-    /*
-     * We are not allowed to steal jobs to this run queue
-     * if it is suspended. Note that it might get suspended
-     * at any time when we don't have the lock on the run
-     * queue.
-     */
-    if (rq->flags & ERTS_RUNQ_FLG_SUSPENDED)
-	return 0;
-
-    res = 0;
-    rq_locked = 1;
-
-    ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, rq_locked);
-
-    get_no_runqs(&active_rqs, &blnc_rqs);
-
-    if (active_rqs > blnc_rqs)
-	active_rqs = blnc_rqs;
-
-    if (rq->ix < active_rqs) {
-
-	/* First try to steal from an inactive run queue... */
-	if (active_rqs < blnc_rqs) {
-	    int no = blnc_rqs - active_rqs;
-	    int stop_ix = vix = active_rqs + rq->ix % no;
-	    while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
-		res = check_possible_steal_victim(rq, &rq_locked, vix);
-		if (res)
-		    goto done;
-		vix++;
-		if (vix >= blnc_rqs)
-		    vix = active_rqs;
-		if (vix == stop_ix)
-		    break;
-	    }
-	}
-
-	vix = rq->ix;
-
-	/* ... then try to steal a job from another active queue... */
-	while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
-	    vix++;
-	    if (vix >= active_rqs)
-		vix = 0;
-	    if (vix == rq->ix)
-		break;
-
-	    res = check_possible_steal_victim(rq, &rq_locked, vix);
-	    if (res)
-		goto done;
-	}
-
-    }
-
- done:
-
-    if (!rq_locked)
-	erts_smp_runq_lock(rq);
-
-    if (!res)
-	res = rq->halt_in_progress ?
-	    !ERTS_EMPTY_RUNQ_PORTS(rq) : !ERTS_EMPTY_RUNQ(rq);
-
-    return res;
-}
-
 #endif /* #ifdef ERTS_SMP */
 
-Uint
-erts_debug_nbalance(void)
-{
-#ifdef ERTS_SMP
-    Uint n;
-    erts_smp_mtx_lock(&balance_info.update_mtx);
-    n = balance_info.n;
-    erts_smp_mtx_unlock(&balance_info.update_mtx);
-    return n;
-#else
-    return 0;
-#endif
-}
 
 /* Wakeup other schedulers */
 
@@ -3413,7 +3084,7 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 	}
 
 #ifdef ERTS_SMP
-	proc_sched_initialize(erts_no_run_queues, &balance_info);
+	proc_sched_initialize(erts_no_run_queues, no_schedulers, no_schedulers_online);
 #endif
 
 	n = (int) no_schedulers;
@@ -3516,17 +3187,6 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 	schdlr_sspnd.msb.ongoing = 0;
 	erts_smp_atomic32_init_nob(&schdlr_sspnd.active, no_schedulers);
 	schdlr_sspnd.msb.procs = NULL;
-	init_no_runqs(no_schedulers, no_schedulers_online);
-	balance_info.last_active_runqs = no_schedulers;
-	erts_smp_mtx_init(&balance_info.update_mtx, "migration_info_update");
-	balance_info.forced_check_balance = 0;
-	balance_info.halftime = 1;
-	balance_info.full_reds_history_index = 0;
-	erts_smp_atomic32_init_nob(&balance_info.checking_balance, 0);
-	balance_info.prev_rise.active_runqs = 0;
-	balance_info.prev_rise.max_len = 0;
-	balance_info.prev_rise.reds = 0;
-	balance_info.n = 0;
 
 	if (no_schedulers_online < no_schedulers) {
 		for (ix = no_schedulers_online; ix < erts_no_run_queues; ix++)
@@ -4034,384 +3694,375 @@ erts_schedulers_state(Uint *total,
     return res;
 }
 
-ErtsSchedSuspendResult
-erts_set_schedulers_online(Process *p,
-			   ErtsProcLocks plocks,
-			   Sint new_no,
-			   Sint *old_no)
-{
-    ErtsSchedulerData *esdp;
-    int ix, res, no, have_unlocked_plocks, end_wait;
-    erts_aint32_t changing;
+ErtsSchedSuspendResult erts_set_schedulers_online(Process *p, ErtsProcLocks plocks, Sint new_no, Sint *old_no) {
 
-    if (new_no < 1 || erts_no_schedulers < new_no)
-	return ERTS_SCHDLR_SSPND_EINVAL;
 
-    esdp = ERTS_PROC_GET_SCHDATA(p);
-    end_wait = 0;
+	ErtsSchedulerData *esdp;
+	int ix, res, no, have_unlocked_plocks, end_wait;
+	erts_aint32_t changing;
 
-    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+	if (new_no < 1 || erts_no_schedulers < new_no)
+		return ERTS_SCHDLR_SSPND_EINVAL;
 
-    have_unlocked_plocks = 0;
-    no = (int) new_no;
+	esdp = ERTS_PROC_GET_SCHDATA(p);
+	end_wait = 0;
 
-    changing = erts_smp_atomic32_read_nob(&schdlr_sspnd.changing);
-    if (changing) {
-	res = ERTS_SCHDLR_SSPND_YIELD_RESTART;
-    }
-    else {
-	int online = *old_no = schdlr_sspnd.online;
-	if (no == schdlr_sspnd.online) {
-	    res = ERTS_SCHDLR_SSPND_DONE;
+	erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+
+	have_unlocked_plocks = 0;
+	no = (int) new_no;
+
+	changing = erts_smp_atomic32_read_nob(&schdlr_sspnd.changing);
+	if (changing) {
+		res = ERTS_SCHDLR_SSPND_YIELD_RESTART;
+	} else {
+		int online = *old_no = schdlr_sspnd.online;
+		if (no == schdlr_sspnd.online) {
+			res = ERTS_SCHDLR_SSPND_DONE;
+		} else {
+			ERTS_SCHDLR_SSPND_CHNG_SET(
+					(ERTS_SCHDLR_SSPND_CHNG_ONLN | ERTS_SCHDLR_SSPND_CHNG_WAITER),
+					0);
+			schdlr_sspnd.online = no;
+			if (no > online) {
+				int ix;
+				schdlr_sspnd.wait_curr_online = no;
+				if (ongoing_multi_scheduling_block()) {
+					for (ix = online; ix < no; ix++)
+						erts_sched_poke(ERTS_SCHED_SLEEP_INFO_IX(ix) );
+				} else {
+					if (plocks) {
+						have_unlocked_plocks = 1;
+						erts_smp_proc_unlock(p, plocks);
+					}
+					erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+					lock_balance_info();
+					for (ix = online; ix < no; ix++) {
+						ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
+						erts_smp_runq_lock(rq);
+						ERTS_RUNQ_RESET_SUSPEND_INFO(rq, 0x5);
+						erts_smp_runq_unlock(rq);
+						scheduler_ix_resume_wake(ix);
+					}
+					/*
+					 * Spread evacuation paths among all online
+					 * run queues.
+					 */
+					for (ix = no; ix < erts_no_run_queues; ix++) {
+						ErtsRunQueue *from_rq = ERTS_RUNQ_IX(ix);
+						ErtsRunQueue *to_rq = ERTS_RUNQ_IX(ix % no);
+						evacuate_run_queue(from_rq, to_rq);
+					}
+					set_no_used_runqs(no);
+					unlock_balance_info();
+					erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+				}
+				res = ERTS_SCHDLR_SSPND_DONE;
+			} else /* if (no < online) */{
+				if (p->scheduler_data->no <= no) {
+					res = ERTS_SCHDLR_SSPND_DONE;
+					schdlr_sspnd.wait_curr_online = no;
+				} else {
+					/*
+					 * Yield! Current process needs to migrate
+					 * before bif returns.
+					 */
+					res = ERTS_SCHDLR_SSPND_YIELD_DONE;
+					schdlr_sspnd.wait_curr_online = no + 1;
+				}
+
+				if (ongoing_multi_scheduling_block()) {
+					for (ix = no; ix < online; ix++)
+						erts_sched_poke(ERTS_SCHED_SLEEP_INFO_IX(ix) );
+				} else {
+					if (plocks) {
+						have_unlocked_plocks = 1;
+						erts_smp_proc_unlock(p, plocks);
+					}
+					erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+					lock_balance_info();
+
+					for (ix = 0; ix < online; ix++) {
+						ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
+						erts_smp_runq_lock(rq);
+						ERTS_RUNQ_RESET_MIGRATION_PATHS(rq, 0x6);
+						erts_smp_runq_unlock(rq);
+					}
+					/*
+					 * Evacutation order important! Newly suspended run queues
+					 * has to be evacuated last.
+					 */
+					for (ix = erts_no_run_queues - 1; ix >= no; ix--)
+						evacuate_run_queue(ERTS_RUNQ_IX(ix),
+								ERTS_RUNQ_IX(ix % no) );
+					set_no_used_runqs(no);
+					unlock_balance_info();
+					erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+					for (ix = no; ix < online; ix++) {
+						ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
+						wake_scheduler(rq, 0);
+					}
+				}
+			}
+
+			if (schdlr_sspnd.curr_online != schdlr_sspnd.wait_curr_online) {
+				erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+				if (plocks && !have_unlocked_plocks) {
+					have_unlocked_plocks = 1;
+					erts_smp_proc_unlock(p, plocks);
+				}
+				erts_thr_progress_active(esdp, 0);
+				erts_thr_progress_prepare_wait(esdp);
+				end_wait = 1;
+				erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+			}
+
+			while (schdlr_sspnd.curr_online != schdlr_sspnd.wait_curr_online)
+				erts_smp_cnd_wait(&schdlr_sspnd.cnd, &schdlr_sspnd.mtx);
+
+			ASSERT(res != ERTS_SCHDLR_SSPND_DONE
+					? (ERTS_SCHDLR_SSPND_CHNG_WAITER
+							& erts_smp_atomic32_read_nob(&schdlr_sspnd.changing))
+							: (ERTS_SCHDLR_SSPND_CHNG_WAITER
+									== erts_smp_atomic32_read_nob(&schdlr_sspnd.changing)));
+			erts_smp_atomic32_read_band_nob(&schdlr_sspnd.changing,
+					~ERTS_SCHDLR_SSPND_CHNG_WAITER);
+
+		}
 	}
-	else {
-	    ERTS_SCHDLR_SSPND_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_ONLN
-					| ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
-	    schdlr_sspnd.online = no;
-	    if (no > online) {
-		int ix;
-		schdlr_sspnd.wait_curr_online = no;
-		if (ongoing_multi_scheduling_block()) {
-		    for (ix = online; ix < no; ix++)
-			erts_sched_poke(ERTS_SCHED_SLEEP_INFO_IX(ix));
-		}
-		else {
-		    if (plocks) {
-			have_unlocked_plocks = 1;
-			erts_smp_proc_unlock(p, plocks);
-		    }
-		    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		    erts_smp_mtx_lock(&balance_info.update_mtx);
-		    for (ix = online; ix < no; ix++) {
-			ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
-			erts_smp_runq_lock(rq);
-			ERTS_RUNQ_RESET_SUSPEND_INFO(rq, 0x5);
-			erts_smp_runq_unlock(rq);
-			scheduler_ix_resume_wake(ix);
-		    }
-		    /*
-		     * Spread evacuation paths among all online
-		     * run queues.
-		     */
-		    for (ix = no; ix < erts_no_run_queues; ix++) {
-			ErtsRunQueue *from_rq = ERTS_RUNQ_IX(ix);
-			ErtsRunQueue *to_rq = ERTS_RUNQ_IX(ix % no);
-			evacuate_run_queue(from_rq, to_rq);
-		    }
-		    set_no_used_runqs(no);
-		    erts_smp_mtx_unlock(&balance_info.update_mtx);
-		    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-		}
-		res = ERTS_SCHDLR_SSPND_DONE;
-	    }
-	    else /* if (no < online) */ {
-		if (p->scheduler_data->no <= no) {
-		    res = ERTS_SCHDLR_SSPND_DONE;
-		    schdlr_sspnd.wait_curr_online = no;
-		}
-		else {
-		    /*
-		     * Yield! Current process needs to migrate
-		     * before bif returns.
-		     */
-		    res = ERTS_SCHDLR_SSPND_YIELD_DONE;
-		    schdlr_sspnd.wait_curr_online = no+1;
-		}
 
-		if (ongoing_multi_scheduling_block()) {
-		    for (ix = no; ix < online; ix++)
-			erts_sched_poke(ERTS_SCHED_SLEEP_INFO_IX(ix));
-		}
-		else {
-		    if (plocks) {
-			have_unlocked_plocks = 1;
-			erts_smp_proc_unlock(p, plocks);
-		    }
-		    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		    erts_smp_mtx_lock(&balance_info.update_mtx);
-		    
-		    for (ix = 0; ix < online; ix++) {
-			ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
-			erts_smp_runq_lock(rq);
-			ERTS_RUNQ_RESET_MIGRATION_PATHS(rq, 0x6);
-			erts_smp_runq_unlock(rq);
-		    }
-		    /*
-		     * Evacutation order important! Newly suspended run queues
-		     * has to be evacuated last.
-		     */
-		    for (ix = erts_no_run_queues-1; ix >= no; ix--)
-			evacuate_run_queue(ERTS_RUNQ_IX(ix),
-					   ERTS_RUNQ_IX(ix % no));
-		    set_no_used_runqs(no);
-		    erts_smp_mtx_unlock(&balance_info.update_mtx);
-		    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-		    for (ix = no; ix < online; ix++) {
-			ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
-			wake_scheduler(rq, 0);
-		    }
-		}
-	    }
-
-	    if (schdlr_sspnd.curr_online != schdlr_sspnd.wait_curr_online) {
-		erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		if (plocks && !have_unlocked_plocks) {
-		    have_unlocked_plocks = 1;
-		    erts_smp_proc_unlock(p, plocks);
-		}
-		erts_thr_progress_active(esdp, 0);
-		erts_thr_progress_prepare_wait(esdp);
-		end_wait = 1;
-		erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-	    }
-
-	    while (schdlr_sspnd.curr_online != schdlr_sspnd.wait_curr_online)
-		erts_smp_cnd_wait(&schdlr_sspnd.cnd, &schdlr_sspnd.mtx);
-
-	    ASSERT(res != ERTS_SCHDLR_SSPND_DONE
-		   ? (ERTS_SCHDLR_SSPND_CHNG_WAITER
-		      & erts_smp_atomic32_read_nob(&schdlr_sspnd.changing))
-		   : (ERTS_SCHDLR_SSPND_CHNG_WAITER
-		      == erts_smp_atomic32_read_nob(&schdlr_sspnd.changing)));
-	    erts_smp_atomic32_read_band_nob(&schdlr_sspnd.changing,
-					    ~ERTS_SCHDLR_SSPND_CHNG_WAITER);
-
+	erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+	if (end_wait) {
+		erts_thr_progress_finalize_wait(esdp);
+		erts_thr_progress_active(esdp, 1);
 	}
-    }
+	if (have_unlocked_plocks)
+		erts_smp_proc_lock(p, plocks);
 
-    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-    if (end_wait) {
-	erts_thr_progress_finalize_wait(esdp);
-	erts_thr_progress_active(esdp, 1);
-    }
-    if (have_unlocked_plocks)
-	erts_smp_proc_lock(p, plocks);
-
-    return res;
+	return res;
 }
 
-ErtsSchedSuspendResult
-erts_block_multi_scheduling(Process *p, ErtsProcLocks plocks, int on, int all)
-{
-    int ix, res, have_unlocked_plocks = 0;
-    erts_aint32_t changing;
-    ErtsProcList *plp;
+ErtsSchedSuspendResult erts_block_multi_scheduling(Process *p, ErtsProcLocks plocks, int on, int all) {
 
-    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-    changing = erts_smp_atomic32_read_nob(&schdlr_sspnd.changing);
-    if (changing) {
-	res = ERTS_SCHDLR_SSPND_YIELD_RESTART; /* Yield */
-    }
-    else if (on) { /* ------ BLOCK ------ */
-	if (schdlr_sspnd.msb.procs) {
-	    plp = proclist_create(p);
-	    plp->next = schdlr_sspnd.msb.procs;
-	    schdlr_sspnd.msb.procs = plp;
-	    p->flags |= F_HAVE_BLCKD_MSCHED;
-	    ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
-	    ASSERT(p->scheduler_data->no == 1);
-	    res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
+	int ix, res, have_unlocked_plocks = 0;
+	erts_aint32_t changing;
+	ErtsProcList *plp;
+
+	erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+	changing = erts_smp_atomic32_read_nob(&schdlr_sspnd.changing);
+	if (changing) {
+		res = ERTS_SCHDLR_SSPND_YIELD_RESTART; /* Yield */
 	}
-	else {
-	    int online = schdlr_sspnd.online;
-	    p->flags |= F_HAVE_BLCKD_MSCHED;
-	    if (plocks) {
-		have_unlocked_plocks = 1;
-		erts_smp_proc_unlock(p, plocks);
-	    }
-	    ASSERT(!ongoing_multi_scheduling_block());
-	    schdlr_sspnd.msb.ongoing = 1;
-	    if (online == 1) {
-		res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
-		ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
-		ASSERT(p->scheduler_data->no == 1);
-	    }
-	    else {
-		ERTS_SCHDLR_SSPND_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_MSB
-					    | ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
-		if (p->scheduler_data->no == 1) {
-		    res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
-		    schdlr_sspnd.msb.wait_active = 1;
+	else if (on) { /* ------ BLOCK ------ */
+		if (schdlr_sspnd.msb.procs) {
+			plp = proclist_create(p);
+			plp->next = schdlr_sspnd.msb.procs;
+			schdlr_sspnd.msb.procs = plp;
+			p->flags |= F_HAVE_BLCKD_MSCHED;
+			ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
+			ASSERT(p->scheduler_data->no == 1);
+			res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
 		}
 		else {
-		    /*
-		     * Yield! Current process needs to migrate
-		     * before bif returns.
-		     */
-		    res = ERTS_SCHDLR_SSPND_YIELD_DONE_MSCHED_BLOCKED;
-		    schdlr_sspnd.msb.wait_active = 2;
-		}
-
-		erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		erts_smp_mtx_lock(&balance_info.update_mtx);
-		set_no_used_runqs(1);
-		for (ix = 0; ix < online; ix++) {
-		    ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
-		    erts_smp_runq_lock(rq);
-		    ASSERT(!(rq->flags & ERTS_RUNQ_FLG_SUSPENDED));
-		    ERTS_RUNQ_RESET_MIGRATION_PATHS(rq, 0x7);
-		    erts_smp_runq_unlock(rq);
-		}
-		/*
-		 * Evacuate all activities in all other run queues
-		 * into the first run queue. Note order is important,
-		 * online run queues has to be evacuated last.
-		 */
-		for (ix = erts_no_run_queues-1; ix >= 1; ix--)
-		    evacuate_run_queue(ERTS_RUNQ_IX(ix), ERTS_RUNQ_IX(0));
-		erts_smp_mtx_unlock(&balance_info.update_mtx);
-		erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-
-		if (erts_smp_atomic32_read_nob(&schdlr_sspnd.active)
-		    != schdlr_sspnd.msb.wait_active) {
-		    ErtsSchedulerData *esdp;
-
-		    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-
-		    if (plocks && !have_unlocked_plocks) {
-			have_unlocked_plocks = 1;
-			erts_smp_proc_unlock(p, plocks);
-		    }
-
-		    esdp = ERTS_PROC_GET_SCHDATA(p);
-
-		    erts_thr_progress_active(esdp, 0);
-		    erts_thr_progress_prepare_wait(esdp);
-
-		    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-
-		    while (erts_smp_atomic32_read_nob(&schdlr_sspnd.active)
-			   != schdlr_sspnd.msb.wait_active)
-			erts_smp_cnd_wait(&schdlr_sspnd.cnd,
-					  &schdlr_sspnd.mtx);
-		    
-		    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		    
-		    erts_thr_progress_active(esdp, 1);
-		    erts_thr_progress_finalize_wait(esdp);
-
-		    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-
-		}
-		ASSERT(res != ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED
-		       ? (ERTS_SCHDLR_SSPND_CHNG_WAITER
-			  & erts_smp_atomic32_read_nob(&schdlr_sspnd.changing))
-		       : (ERTS_SCHDLR_SSPND_CHNG_WAITER
-			  == erts_smp_atomic32_read_nob(&schdlr_sspnd.changing)));
-		erts_smp_atomic32_read_band_nob(&schdlr_sspnd.changing,
-						~ERTS_SCHDLR_SSPND_CHNG_WAITER);
-	    }
-	    plp = proclist_create(p);
-	    plp->next = schdlr_sspnd.msb.procs;
-	    schdlr_sspnd.msb.procs = plp;
-#ifdef DEBUG
-	    ERTS_FOREACH_RUNQ(srq,
-	    {
-		if (srq != ERTS_RUNQ_IX(0)) {
-		    ASSERT(ERTS_EMPTY_RUNQ(srq));
-		    ASSERT(srq->flags & ERTS_RUNQ_FLG_SUSPENDED);
-		}
-	    });
-#endif
-	    ASSERT(p->scheduler_data);
-	}
-    }
-    else if (!ongoing_multi_scheduling_block()) {
-	/* unblock not ongoing */
-	ASSERT(!schdlr_sspnd.msb.procs);
-	res = ERTS_SCHDLR_SSPND_DONE;
-    }
-    else {  /* ------ UNBLOCK ------ */
-	if (p->flags & F_HAVE_BLCKD_MSCHED) {
-	    ErtsProcList **plpp = &schdlr_sspnd.msb.procs;
-	    plp = schdlr_sspnd.msb.procs;
-
-	    while (plp) {
-		if (!proclist_same(plp, p)){
-		    plpp = &plp->next;
-		    plp = plp->next;
-		}
-		else {
-		    *plpp = plp->next;
-		    proclist_destroy(plp);
-		    if (!all)
-			break;
-		    plp = *plpp;
-		}
-	    }
-	}
-	if (schdlr_sspnd.msb.procs)
-	    res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
-	else {
-	    ERTS_SCHDLR_SSPND_CHNG_SET(ERTS_SCHDLR_SSPND_CHNG_MSB, 0);
-#ifdef DEBUG
-	    ERTS_FOREACH_RUNQ(rq,
-	    {
-		if (rq != p->scheduler_data->run_queue) {
-		    if (!ERTS_EMPTY_RUNQ(rq)) {
-			Process *rp;
-			int pix;
-			ASSERT(rq->ports.info.len == 0);
-			for (pix = 0; pix < ERTS_NO_PROC_PRIO_LEVELS; pix++) {
-			    for (rp = rq->procs.prio[pix].first;
-				 rp;
-				 rp = rp->next) {
-				ASSERT(rp->bound_runq);
-			    }
+			int online = schdlr_sspnd.online;
+			p->flags |= F_HAVE_BLCKD_MSCHED;
+			if (plocks) {
+				have_unlocked_plocks = 1;
+				erts_smp_proc_unlock(p, plocks);
 			}
-		    }
+			ASSERT(!ongoing_multi_scheduling_block());
+			schdlr_sspnd.msb.ongoing = 1;
+			if (online == 1) {
+				res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
+				ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
+				ASSERT(p->scheduler_data->no == 1);
+			}
+			else {
+				ERTS_SCHDLR_SSPND_CHNG_SET((ERTS_SCHDLR_SSPND_CHNG_MSB
+						| ERTS_SCHDLR_SSPND_CHNG_WAITER), 0);
+				if (p->scheduler_data->no == 1) {
+					res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
+					schdlr_sspnd.msb.wait_active = 1;
+				}
+				else {
+					/*
+					 * Yield! Current process needs to migrate
+					 * before bif returns.
+					 */
+					res = ERTS_SCHDLR_SSPND_YIELD_DONE_MSCHED_BLOCKED;
+					schdlr_sspnd.msb.wait_active = 2;
+				}
 
-		    ASSERT(rq->flags & ERTS_RUNQ_FLG_SUSPENDED);
-		}
-	    });
+				erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+				lock_balance_info();
+				set_no_used_runqs(1);
+				for (ix = 0; ix < online; ix++) {
+					ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
+					erts_smp_runq_lock(rq);
+					ASSERT(!(rq->flags & ERTS_RUNQ_FLG_SUSPENDED));
+					ERTS_RUNQ_RESET_MIGRATION_PATHS(rq, 0x7);
+					erts_smp_runq_unlock(rq);
+				}
+				/*
+				 * Evacuate all activities in all other run queues
+				 * into the first run queue. Note order is important,
+				 * online run queues has to be evacuated last.
+				 */
+				for (ix = erts_no_run_queues-1; ix >= 1; ix--)
+					evacuate_run_queue(ERTS_RUNQ_IX(ix), ERTS_RUNQ_IX(0));
+				unlock_balance_info();
+				erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+
+				if (erts_smp_atomic32_read_nob(&schdlr_sspnd.active)
+						!= schdlr_sspnd.msb.wait_active) {
+					ErtsSchedulerData *esdp;
+
+					erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+
+					if (plocks && !have_unlocked_plocks) {
+						have_unlocked_plocks = 1;
+						erts_smp_proc_unlock(p, plocks);
+					}
+
+					esdp = ERTS_PROC_GET_SCHDATA(p);
+
+					erts_thr_progress_active(esdp, 0);
+					erts_thr_progress_prepare_wait(esdp);
+
+					erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+
+					while (erts_smp_atomic32_read_nob(&schdlr_sspnd.active)
+							!= schdlr_sspnd.msb.wait_active)
+						erts_smp_cnd_wait(&schdlr_sspnd.cnd,
+								&schdlr_sspnd.mtx);
+
+					erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+
+					erts_thr_progress_active(esdp, 1);
+					erts_thr_progress_finalize_wait(esdp);
+
+					erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+
+				}
+				ASSERT(res != ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED
+						? (ERTS_SCHDLR_SSPND_CHNG_WAITER
+								& erts_smp_atomic32_read_nob(&schdlr_sspnd.changing))
+								: (ERTS_SCHDLR_SSPND_CHNG_WAITER
+										== erts_smp_atomic32_read_nob(&schdlr_sspnd.changing)));
+				erts_smp_atomic32_read_band_nob(&schdlr_sspnd.changing,
+						~ERTS_SCHDLR_SSPND_CHNG_WAITER);
+			}
+			plp = proclist_create(p);
+			plp->next = schdlr_sspnd.msb.procs;
+			schdlr_sspnd.msb.procs = plp;
+#ifdef DEBUG
+			ERTS_FOREACH_RUNQ(srq,
+					{
+							if (srq != ERTS_RUNQ_IX(0)) {
+								ASSERT(ERTS_EMPTY_RUNQ(srq));
+								ASSERT(srq->flags & ERTS_RUNQ_FLG_SUSPENDED);
+							}
+					});
 #endif
-	    p->flags &= ~F_HAVE_BLCKD_MSCHED;
-	    schdlr_sspnd.msb.ongoing = 0;
-	    if (schdlr_sspnd.online == 1) {
-		/* No schedulers to resume */
-		ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
-		ERTS_SCHDLR_SSPND_CHNG_SET(0, ERTS_SCHDLR_SSPND_CHNG_MSB);
-	    }
-	    else {
-		int online = schdlr_sspnd.online;
-		erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-		if (plocks) {
-		    have_unlocked_plocks = 1;
-		    erts_smp_proc_unlock(p, plocks);
+			ASSERT(p->scheduler_data);
 		}
-		erts_smp_mtx_lock(&balance_info.update_mtx);
-
-		/* Resume all online run queues */
-		for (ix = 1; ix < online; ix++) {
-		    ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
-		    erts_smp_runq_lock(rq);
-		    ERTS_RUNQ_RESET_SUSPEND_INFO(rq, 0x4);
-		    erts_smp_runq_unlock(rq);
-		    scheduler_ix_resume_wake(ix);
-		}
-
-		/* Spread evacuation paths among all online run queues */
-		for (ix = online; ix < erts_no_run_queues; ix++)
-		    evacuate_run_queue(ERTS_RUNQ_IX(ix),
-				       ERTS_RUNQ_IX(ix % online));
-
-		set_no_used_runqs(online);
-		/* Make sure that we balance soon... */
-		balance_info.forced_check_balance = 1;
-		erts_smp_runq_lock(ERTS_RUNQ_IX(0));
-		ERTS_RUNQ_IX(0)->check_balance_reds = 0;
-		erts_smp_runq_unlock(ERTS_RUNQ_IX(0));
-		erts_smp_mtx_unlock(&balance_info.update_mtx);
-		erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-	    }
-	    res = ERTS_SCHDLR_SSPND_DONE;
 	}
-    }
+	else if (!ongoing_multi_scheduling_block()) {
+		/* unblock not ongoing */
+		ASSERT(!schdlr_sspnd.msb.procs);
+		res = ERTS_SCHDLR_SSPND_DONE;
+	}
+	else {  /* ------ UNBLOCK ------ */
+		if (p->flags & F_HAVE_BLCKD_MSCHED) {
+			ErtsProcList **plpp = &schdlr_sspnd.msb.procs;
+			plp = schdlr_sspnd.msb.procs;
 
-    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-    if (have_unlocked_plocks)
-	erts_smp_proc_lock(p, plocks);
-    return res;
+			while (plp) {
+				if (!proclist_same(plp, p)){
+					plpp = &plp->next;
+					plp = plp->next;
+				}
+				else {
+					*plpp = plp->next;
+					proclist_destroy(plp);
+					if (!all)
+						break;
+					plp = *plpp;
+				}
+			}
+		}
+		if (schdlr_sspnd.msb.procs)
+			res = ERTS_SCHDLR_SSPND_DONE_MSCHED_BLOCKED;
+		else {
+			ERTS_SCHDLR_SSPND_CHNG_SET(ERTS_SCHDLR_SSPND_CHNG_MSB, 0);
+#ifdef DEBUG
+			ERTS_FOREACH_RUNQ(rq,
+					{
+							if (rq != p->scheduler_data->run_queue) {
+								if (!ERTS_EMPTY_RUNQ(rq)) {
+									Process *rp;
+									int pix;
+									ASSERT(rq->ports.info.len == 0);
+									for (pix = 0; pix < ERTS_NO_PROC_PRIO_LEVELS; pix++) {
+										for (rp = rq->procs.prio[pix].first;
+												rp;
+												rp = rp->next) {
+											ASSERT(rp->bound_runq);
+										}
+									}
+								}
+
+								ASSERT(rq->flags & ERTS_RUNQ_FLG_SUSPENDED);
+							}
+					});
+#endif
+			p->flags &= ~F_HAVE_BLCKD_MSCHED;
+			schdlr_sspnd.msb.ongoing = 0;
+			if (schdlr_sspnd.online == 1) {
+				/* No schedulers to resume */
+				ASSERT(erts_smp_atomic32_read_nob(&schdlr_sspnd.active) == 1);
+				ERTS_SCHDLR_SSPND_CHNG_SET(0, ERTS_SCHDLR_SSPND_CHNG_MSB);
+			}
+			else {
+				int online = schdlr_sspnd.online;
+				erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+				if (plocks) {
+					have_unlocked_plocks = 1;
+					erts_smp_proc_unlock(p, plocks);
+				}
+				lock_balance_info();
+
+				/* Resume all online run queues */
+				for (ix = 1; ix < online; ix++) {
+					ErtsRunQueue *rq = ERTS_RUNQ_IX(ix);
+					erts_smp_runq_lock(rq);
+					ERTS_RUNQ_RESET_SUSPEND_INFO(rq, 0x4);
+					erts_smp_runq_unlock(rq);
+					scheduler_ix_resume_wake(ix);
+				}
+
+				/* Spread evacuation paths among all online run queues */
+				for (ix = online; ix < erts_no_run_queues; ix++)
+					evacuate_run_queue(ERTS_RUNQ_IX(ix),
+							ERTS_RUNQ_IX(ix % online));
+
+				set_no_used_runqs(online);
+				/* Make sure that we balance soon... */
+				force_check_balance();
+				erts_smp_runq_lock(ERTS_RUNQ_IX(0));
+				ERTS_RUNQ_IX(0)->check_balance_reds = 0;
+				erts_smp_runq_unlock(ERTS_RUNQ_IX(0));
+				unlock_balance_info();
+				erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+			}
+			res = ERTS_SCHDLR_SSPND_DONE;
+		}
+	}
+
+	erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+	if (have_unlocked_plocks)
+		erts_smp_proc_lock(p, plocks);
+	return res;
 }
 
 #ifdef DEBUG

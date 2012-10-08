@@ -193,6 +193,17 @@ extern int erts_sched_thread_suggested_stack_size;
 #define ERTS_RUNQ_CALL_CHECK_BALANCE_REDS \
   (ERTS_RUNQ_CHECK_BALANCE_REDS_PER_SCHED/2)
 
+#define ERTS_EMPTY_RUNQ(RQ) \
+  ((RQ)->len == 0 && (RQ)->misc.start == NULL)
+
+#define ERTS_EMPTY_RUNQ_PORTS(RQ) \
+  ((RQ)->ports.info.len == 0 && (RQ)->misc.start == NULL)
+
+#define MAX_BIT       (1 << PRIORITY_MAX)
+#define HIGH_BIT      (1 << PRIORITY_HIGH)
+#define NORMAL_BIT    (1 << PRIORITY_NORMAL)
+#define LOW_BIT       (1 << PRIORITY_LOW)
+
 #ifdef DEBUG
 #  if defined(ARCH_64) && !HALFWORD_HEAP
 #    define ERTS_DBG_SET_INVALID_RUNQP(RQP, N) \
@@ -548,9 +559,13 @@ typedef union {
 
 extern ErtsAlignedSchedulerData *erts_aligned_scheduler_data;
 
-#ifndef ERTS_SMP
-extern ErtsSchedulerData *erts_scheduler_data;
+#ifdef ERTS_SMP
+erts_smp_atomic32_t doing_sys_schedule;
+erts_smp_atomic32_t no_empty_run_queues;
+#else
+ErtsSchedulerData *erts_scheduler_data;
 #endif
+
 
 /*
  * Process Specific Data.
@@ -1455,23 +1470,6 @@ ERTS_GLB_INLINE ErtsRunQueue *erts_check_emigration_need(ErtsRunQueue *c_rq,
 							 int prio);
 
 void immigrate(ErtsRunQueue *rq);
-int try_steal_task(ErtsRunQueue *rq);
-
-typedef struct struct_balance_info {
-    erts_smp_mtx_t update_mtx;
-    erts_smp_atomic32_t no_runqs;
-    int last_active_runqs;
-    int forced_check_balance;
-    erts_smp_atomic32_t checking_balance;
-    int halftime;
-    int full_reds_history_index;
-    struct {
-	int active_runqs;
-	int reds;
-	int max_len;
-    } prev_rise;
-    Uint n;
-} balance_info_type;
 
 ERTS_INLINE void get_no_runqs(int *active, int *used);
 ERTS_INLINE void set_no_active_runqs(int active);

@@ -4,12 +4,13 @@
 #include "erl_process_sched_ws.h"
 #include "dtrace-wrapper.h"
 
+
 /*
  * Initialization
  */
 #ifdef ERTS_SMP
-void proc_sched_initialize(Uint nQueues, balance_info_type* b_info) {
-	 proc_sched_migrate_initialize(nQueues, b_info);
+void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online) {
+	proc_sched_migrate_initialize(nQueues, no_schedulers, no_schedulers_online);
 }
 #endif
 
@@ -22,17 +23,17 @@ static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN)(Process*) = &proc_sch
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
 	switch (strategy) {
-		case PROC_SCHED_IP_DEFAULT:
-			PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_default;
-			break;
-		case PROC_SCHED_IP_RANDOM:
-			PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_random;
-			break;
-		case PROC_SCHED_IP_CIRCULAR:
-			PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_circular;
-			break;
-		default:
-			return;
+	case PROC_SCHED_IP_DEFAULT:
+		PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_default;
+		break;
+	case PROC_SCHED_IP_RANDOM:
+		PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_random;
+		break;
+	case PROC_SCHED_IP_CIRCULAR:
+		PROC_SCHED_CURRENT_IP_STRATEGY_FUN = &proc_sched_ip_circular;
+		break;
+	default:
+		return;
 	}
 	PROC_SCHED_CURRENT_IP_STRATEGY = strategy;
 }
@@ -58,16 +59,16 @@ static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *) = &proc_
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	switch (strategy) {
-		case PROC_SCHED_MIGRATION_DEFAULT:
-			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
-			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;
-			break;
-		case PROC_SCHED_MIGRATION_DISABLED:
-			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
-			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
-			break;
-		default:
-			return;
+	case PROC_SCHED_MIGRATION_DEFAULT:
+		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
+		PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;
+		break;
+	case PROC_SCHED_MIGRATION_DISABLED:
+		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
+		PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
+		break;
+	default:
+		return;
 	}
 	PROC_SCHED_CURRENT_MIGRATION_STRATEGY = strategy;
 }
@@ -79,7 +80,7 @@ int proc_sched_get_migration_strategy(void) {
 void proc_sched_check_balance (ErtsRunQueue *rq) {
 #ifdef USE_VM_PROBES
 	//if (DTRACE_ENABLED(scheduler_check_balance))
-		DTRACE1(scheduler_check_balance, rq->ix + 1);
+	DTRACE1(scheduler_check_balance, rq->ix + 1);
 #endif
 	PROC_SCHED_CURR_MIGR_STG_CB_FUN(rq);
 }
@@ -99,14 +100,14 @@ static int (*PROC_SCHED_CURR_WS_STG_FUN)(ErtsRunQueue *) = &proc_sched_ws_defaul
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
 	switch (strategy) {
-		case PROC_SCHED_WS_DEFAULT:
-			PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
-			break;
-		case PROC_SCHED_WS_DISABLED:
-			PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_disabled;
-			break;
-		default:
-			return;
+	case PROC_SCHED_WS_DEFAULT:
+		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
+		break;
+	case PROC_SCHED_WS_DISABLED:
+		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_disabled;
+		break;
+	default:
+		return;
 	}
 	PROC_SCHED_CURRENT_WS_STRATEGY = strategy;
 }
@@ -118,9 +119,88 @@ int proc_sched_get_ws_strategy (void) {
 
 int proc_sched_work_stealing(ErtsRunQueue* rq) {
 #ifdef USE_VM_PROBES
-//	if (DTRACE_ENABLED(scheduler_work_stealing))
-		DTRACE1(scheduler_work_stealing, rq->ix + 1);
+	//	if (DTRACE_ENABLED(scheduler_work_stealing))
+	DTRACE1(scheduler_work_stealing, rq->ix + 1);
 #endif
 	return PROC_SCHED_CURR_WS_STG_FUN(rq);
 }
 
+
+/*
+ * Misc
+ */
+#ifdef ERTS_SMP
+
+ERTS_INLINE void get_no_runqs(int *active, int *used) {
+	erts_aint32_t no_runqs = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
+	if (active)
+		*active = (int) (no_runqs & ERTS_NO_RUNQS_MASK);
+	if (used)
+		*used = (int) ((no_runqs >> ERTS_NO_USED_RUNQS_SHIFT) & ERTS_NO_RUNQS_MASK);
+}
+
+ERTS_INLINE void set_no_used_runqs(int used) {
+	erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
+	while (1) {
+		erts_aint32_t act, new;
+		new = (used & ERTS_NO_RUNQS_MASK) << ERTS_NO_USED_RUNQS_SHIFT;
+		new |= exp & ERTS_NO_RUNQS_MASK;
+		act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
+		if (act == exp)
+			break;
+		exp = act;
+	}
+}
+
+ERTS_INLINE void set_no_active_runqs(int active) {
+	erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
+	while (1) {
+		erts_aint32_t act, new;
+		new = exp & (ERTS_NO_RUNQS_MASK << ERTS_NO_USED_RUNQS_SHIFT);
+		new |= active & ERTS_NO_RUNQS_MASK;
+		act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
+		if (act == exp)
+			break;
+		exp = act;
+	}
+}
+
+ERTS_INLINE int try_inc_no_active_runqs(int active) {
+	erts_aint32_t exp = erts_smp_atomic32_read_nob(&balance_info.no_runqs);
+	if (((exp >> ERTS_NO_USED_RUNQS_SHIFT) & ERTS_NO_RUNQS_MASK) < active)
+		return 0;
+	if ((exp & ERTS_NO_RUNQS_MASK) + 1 == active) {
+		erts_aint32_t new, act;
+		new = exp & (ERTS_NO_RUNQS_MASK << ERTS_NO_USED_RUNQS_SHIFT);
+		new |= active & ERTS_NO_RUNQS_MASK;
+		act = erts_smp_atomic32_cmpxchg_nob(&balance_info.no_runqs, new, exp);
+		if (act == exp)
+			return 1;
+	}
+	return 0;
+}
+
+ERTS_INLINE void lock_balance_info(void) {
+	erts_smp_mtx_lock(&balance_info.update_mtx);
+}
+
+ERTS_INLINE void unlock_balance_info(void) {
+	erts_smp_mtx_unlock(&balance_info.update_mtx);
+}
+
+ERTS_INLINE void force_check_balance(void) {
+	balance_info.forced_check_balance = 1;
+}
+#endif
+
+ERTS_INLINE Uint erts_debug_nbalance(void) {
+#ifdef ERTS_SMP
+	Uint n;
+	erts_smp_mtx_lock(&balance_info.update_mtx);
+	n = balance_info.n;
+	erts_smp_mtx_unlock(&balance_info.update_mtx);
+	return n;
+#else
+	return 0;
+#endif
+}
