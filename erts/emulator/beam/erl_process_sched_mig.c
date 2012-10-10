@@ -138,7 +138,7 @@ do {							\
 
 
 
-static ERTS_INLINE void half_time_check(ErtsRunQueue *c_rq) {
+static ERTS_INLINE int half_time_check(ErtsRunQueue *c_rq) {
 	if (balance_info.halftime) {
 		balance_info.halftime = 0;
 		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
@@ -152,8 +152,9 @@ static ERTS_INLINE void half_time_check(ErtsRunQueue *c_rq) {
 				});
 
 		erts_smp_runq_lock(c_rq);
-		return;
+		return 1;
 	}
+	return 0;
 }
 
 static ERTS_INLINE void copy_run_queues_info(int blnc_no_rqs, int freds_hist_ix) {
@@ -584,7 +585,7 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 	erts_smp_runq_unlock(c_rq);
 
 	//Half-time check. Checks if schedulers are active and flags them
-	half_time_check(c_rq);
+	if (half_time_check(c_rq)) return;
 
 	/*
 	 * check_balance() is never called in more threads
