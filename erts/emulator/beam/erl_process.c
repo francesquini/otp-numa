@@ -2415,61 +2415,59 @@ erts_sched_notify_check_cpu_bind(void)
 
 #ifdef ERTS_SMP
 
-ErtsRunQueue *
-erts_prepare_emigrate(ErtsRunQueue *c_rq, ErtsRunQueueInfo *c_rqi, int prio)
-{
-    ASSERT(ERTS_CHK_RUNQ_FLG_EMIGRATE(c_rq->flags, prio));
-    ASSERT(ERTS_CHK_RUNQ_FLG_EVACUATE(c_rq->flags, prio)
-	   || c_rqi->len >= c_rqi->migrate.limit.this);
+ErtsRunQueue *erts_prepare_emigrate(ErtsRunQueue *c_rq, ErtsRunQueueInfo *c_rqi, int prio) {
+	ASSERT(ERTS_CHK_RUNQ_FLG_EMIGRATE(c_rq->flags, prio));
+	ASSERT(ERTS_CHK_RUNQ_FLG_EVACUATE(c_rq->flags, prio)
+			|| c_rqi->len >= c_rqi->migrate.limit.this);
 
-    while (1) {
-	ErtsRunQueue *n_rq = c_rqi->migrate.runq;
-	ERTS_DBG_VERIFY_VALID_RUNQP(n_rq);
-	erts_smp_xrunq_lock(c_rq, n_rq);
-	    
-	/*
-	 * erts_smp_xrunq_lock() may release lock on c_rq! We have
-	 * to check that we still want to emigrate and emigrate
-	 * to the same run queue as before.
-	 */
+	while (1) {
+		ErtsRunQueue *n_rq = c_rqi->migrate.runq;
+		ERTS_DBG_VERIFY_VALID_RUNQP(n_rq);
+		erts_smp_xrunq_lock(c_rq, n_rq);
 
-	if (ERTS_CHK_RUNQ_FLG_EMIGRATE(c_rq->flags, prio)) {
-	    Uint32 force = (ERTS_CHK_RUNQ_FLG_EVACUATE(c_rq->flags, prio)
-			    | (c_rq->flags & ERTS_RUNQ_FLG_INACTIVE));
-	    if (force || c_rqi->len > c_rqi->migrate.limit.this) {
-		ErtsRunQueueInfo *n_rqi;
-		/* We still want to emigrate */
+		/*
+		 * erts_smp_xrunq_lock() may release lock on c_rq! We have
+		 * to check that we still want to emigrate and emigrate
+		 * to the same run queue as before.
+		 */
 
-		if (n_rq != c_rqi->migrate.runq) {
-		    /* Ahh... run queue changed; need to do it all over again... */
-		    erts_smp_runq_unlock(n_rq);
-		    continue;
+		if (ERTS_CHK_RUNQ_FLG_EMIGRATE(c_rq->flags, prio)) {
+			Uint32 force = (ERTS_CHK_RUNQ_FLG_EVACUATE(c_rq->flags, prio)
+					| (c_rq->flags & ERTS_RUNQ_FLG_INACTIVE));
+			if (force || c_rqi->len > c_rqi->migrate.limit.this) {
+				ErtsRunQueueInfo *n_rqi;
+				/* We still want to emigrate */
+
+				if (n_rq != c_rqi->migrate.runq) {
+					/* Ahh... run queue changed; need to do it all over again... */
+					erts_smp_runq_unlock(n_rq);
+					continue;
+				}
+				else {
+
+					if (prio == ERTS_PORT_PRIO_LEVEL)
+						n_rqi = &n_rq->ports.info;
+					else
+						n_rqi = &n_rq->procs.prio_info[prio];
+
+					if (force || (n_rqi->len < c_rqi->migrate.limit.other)) {
+						/* emigrate ... */
+						return n_rq;
+					}
+				}
+			}
 		}
-		else {
 
-		    if (prio == ERTS_PORT_PRIO_LEVEL)
-			n_rqi = &n_rq->ports.info;
-		    else
-			n_rqi = &n_rq->procs.prio_info[prio];
-
-		    if (force || (n_rqi->len < c_rqi->migrate.limit.other)) {
-			/* emigrate ... */
-			return n_rq;
-		    }
+		ASSERT(n_rq != c_rq);
+		erts_smp_runq_unlock(n_rq);
+		if (!(c_rq->flags & ERTS_RUNQ_FLG_INACTIVE)) {
+			/* No more emigrations to this runq */
+			ERTS_UNSET_RUNQ_FLG_EMIGRATE(c_rq->flags, prio);
+			ERTS_DBG_SET_INVALID_RUNQP(c_rqi->migrate.runq, 0x3);
 		}
-	    }
-	}
 
-	ASSERT(n_rq != c_rq);
-	erts_smp_runq_unlock(n_rq);
-	if (!(c_rq->flags & ERTS_RUNQ_FLG_INACTIVE)) {
-	    /* No more emigrations to this runq */
-	    ERTS_UNSET_RUNQ_FLG_EMIGRATE(c_rq->flags, prio);
-	    ERTS_DBG_SET_INVALID_RUNQP(c_rqi->migrate.runq, 0x3);
+		return NULL;
 	}
-
-	return NULL;
-    }
 }
 
 void
@@ -5698,7 +5696,7 @@ ERTS_GLB_INLINE void schedule_out_clean_up(Process* p, int calls, scheduling_dat
 			p->status_flags &= ~ERTS_PROC_SFLG_PENDADD2SCHEDQ;
 			notify_runq = internal_add_to_runq(sd->rq, p);
 			if (notify_runq != sd->rq)
-			smp_notify_inc_runq(notify_runq);
+				smp_notify_inc_runq(notify_runq);
 		}
 #endif
 
