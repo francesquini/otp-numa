@@ -354,8 +354,10 @@ static ERTS_INLINE int calculate_migration_paths_all_active(int blnc_no_rqs, str
 					rqc_len_cmp);
 
 			while (1) {
+				// no more overloaded queues
 				if (run_queue_compare[fix].len <= 0)
 					eof = 1;
+				// no more underloaded queues
 				if (run_queue_compare[tix].len >= 0)
 					eot = 1;
 				if (eof || eot)
@@ -380,7 +382,7 @@ static ERTS_INLINE int calculate_migration_paths_all_active(int blnc_no_rqs, str
 #endif
 			}
 
-			if (!eot && eof) {
+			if (!eot && eof) { //in this case there are more underloaded queues than overloaded
 				if (fix < blnc_no_rqs - 1)
 					fix++;
 
@@ -408,7 +410,7 @@ static ERTS_INLINE int calculate_migration_paths_all_active(int blnc_no_rqs, str
 #endif
 					}
 				}
-			} else if (!eof && eot) {
+			} else if (!eof && eot) {//in this case there are more overloaded queues than underloaded
 				if (tix > 0)
 					tix--;
 				if (run_queue_compare[tix].len < 0) {
@@ -617,7 +619,7 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 	/* Read balance information for all run queues */
 	copy_run_queues_info(blnc_no_rqs, freds_hist_ix);
 
-	/* Calculate availability for each priority in each run queues */
+	/* Calculate availability for each priority in each run queue */
 	init_avail_calc(&ac);
 	calculate_availability(blnc_no_rqs, &ac);
 

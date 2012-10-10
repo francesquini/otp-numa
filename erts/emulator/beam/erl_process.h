@@ -327,16 +327,16 @@ typedef struct ErtsSchedulerData_ ErtsSchedulerData;
 typedef struct ErtsRunQueue_ ErtsRunQueue;
 
 typedef struct {
-    int len;
-    int max_len;
-    int reds;
-    struct {
+	int len;
+	int max_len;
+	int reds;
 	struct {
-	    int this;
-	    int other;
-	} limit;
-	ErtsRunQueue *runq;
-    } migrate;
+		struct {
+			int this;
+			int other;
+		} limit;
+		ErtsRunQueue *runq;
+	} migrate;
 } ErtsRunQueueInfo;
 
 struct ErtsRunQueue_ {
