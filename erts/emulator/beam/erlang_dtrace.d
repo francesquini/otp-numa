@@ -337,6 +337,11 @@ provider erlang {
     /* Scheduler related probes */
     probe scheduler__active(int scheduler);
     probe scheduler__inactive(int scheduler);
+
+    probe scheduler__ip_strategy_change(int new_strategy);
+    probe scheduler__cb_strategy_change(int new_strategy);
+    probe scheduler__ws_strategy_change(int new_strategy);
+
     probe scheduler__check_balance(int balancing_scheduler);
     probe scheduler__work_stealing(int stealer_scheduler);
 

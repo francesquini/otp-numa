@@ -8,6 +8,8 @@
 
 //fw declarations
 ERTS_INLINE static void proc_sched_ip_initialize(void);
+ERTS_INLINE static void proc_sched_cb_initialize(void);
+ERTS_INLINE static void proc_sched_ws_initialize(void);
 ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
 
 /***************************
@@ -18,6 +20,8 @@ ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
 
 ERTS_INLINE void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online) {
 	proc_sched_ip_initialize();
+	proc_sched_cb_initialize();
+	proc_sched_ws_initialize();
 	proc_sched_migrate_initialize(nQueues, no_schedulers, no_schedulers_online);
 }
 
@@ -34,6 +38,7 @@ static byte SCHEDULED_IP_STRATEGY;
 static byte PROC_SCHED_CURRENT_IP_STRATEGY;
 static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[3])(Process*);
 
+
 ERTS_INLINE static void proc_sched_ip_initialize(void) {
 	SCHEDULED_IP_CHANGEMENT = INT_MAX;
 
@@ -46,8 +51,13 @@ ERTS_INLINE static void proc_sched_ip_initialize(void) {
 
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
+#ifdef USE_VM_PROBES
+	//if (DTRACE_ENABLED(scheduler_ip_change))
+	DTRACE1(scheduler_ip_strategy_change, strategy);
+#endif
 	PROC_SCHED_CURRENT_IP_STRATEGY = strategy & 0xFF;
 }
+
 
 void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb) {
 	Uint n = 0;
@@ -62,9 +72,11 @@ void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str,
 #endif
 }
 
+
 int proc_sched_get_initial_placement_strategy(void) {
 	return PROC_SCHED_CURRENT_IP_STRATEGY;
 }
+
 
 ErtsRunQueue *proc_sched_initial_placement (Process* parent) {
 	return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY](parent);
@@ -77,14 +89,23 @@ ErtsRunQueue *proc_sched_initial_placement (Process* parent) {
  ***************************
  ***************************/
 
-static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY = PROC_SCHED_MIGRATION_DEFAULT;
+static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY;
 //check balance
-static Uint (*PROC_SCHED_CURR_MIGR_STG_CB_FUN)(ErtsRunQueue *) = &proc_sched_migrate_default_cb;
+static Uint (*PROC_SCHED_CURR_MIGR_STG_CB_FUN)(ErtsRunQueue *);
 //immigration
-static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *) = &proc_sched_migrate_default_immigrate;
+static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *);
+
+
+ERTS_INLINE static void proc_sched_cb_initialize(void) {
+	proc_sched_set_migration_strategy(PROC_SCHED_MIGRATION_DEFAULT);
+}
 
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
+#ifdef USE_VM_PROBES
+	//if (DTRACE_ENABLED(scheduler_cb_strategy_change))
+	DTRACE1(scheduler_cb_strategy_change, strategy);
+#endif
 	switch (strategy) {
 	case PROC_SCHED_MIGRATION_DEFAULT:
 		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
@@ -129,10 +150,20 @@ void proc_sched_immigrate (ErtsRunQueue *rq) {
  ***************************/
 
 //Work Stealing
-static proc_sched_ws_strategy PROC_SCHED_CURRENT_WS_STRATEGY = PROC_SCHED_WS_DEFAULT;
+static proc_sched_ws_strategy PROC_SCHED_CURRENT_WS_STRATEGY;
 static int (*PROC_SCHED_CURR_WS_STG_FUN)(ErtsRunQueue *) = &proc_sched_ws_default;
 
+
+ERTS_INLINE static void proc_sched_ws_initialize(void) {
+	proc_sched_set_ws_strategy(PROC_SCHED_WS_DEFAULT);
+}
+
+
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
+#ifdef USE_VM_PROBES
+	//if (DTRACE_ENABLED(scheduler_ws_strategy_change))
+	DTRACE1(scheduler_ws_strategy_change, strategy);
+#endif
 	switch (strategy) {
 	case PROC_SCHED_WS_DEFAULT:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
@@ -146,9 +177,11 @@ void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
 	PROC_SCHED_CURRENT_WS_STRATEGY = strategy;
 }
 
+
 int proc_sched_get_ws_strategy (void) {
 	return PROC_SCHED_CURRENT_WS_STRATEGY;
 }
+
 
 int proc_sched_work_stealing(ErtsRunQueue* rq) {
 #ifdef USE_VM_PROBES
