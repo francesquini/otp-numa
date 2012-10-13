@@ -1290,7 +1290,7 @@ Eterm erts_debug_reader_groups_map(Process *c_p, int groups);
 Sint erts_test_next_pid(int, Uint);
 Eterm erts_debug_processes(Process *c_p);
 Eterm erts_debug_processes_bif_info(Process *c_p);
-Uint erts_debug_nbalance(void);
+
 int erts_debug_wait_deallocations(Process *c_p);
 
 #ifdef ERTS_SMP

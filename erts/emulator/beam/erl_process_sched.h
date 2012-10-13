@@ -13,9 +13,8 @@
  ****************************************************
  ****************************************************/
 
-#ifdef ERTS_SMP
 void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online);
-#endif
+
 
 /****************************************************
  ****************************************************
@@ -25,13 +24,16 @@ void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers
 
 /* Possible ip strategies */
 typedef enum enum_proc_sched_ip_strategy {
-	PROC_SCHED_IP_DEFAULT,
-	PROC_SCHED_IP_RANDOM,
-	PROC_SCHED_IP_CIRCULAR
+	PROC_SCHED_IP_DEFAULT = 0,
+	PROC_SCHED_IP_RANDOM = 1,
+	PROC_SCHED_IP_CIRCULAR = 2
 } proc_sched_ip_strategy;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
+void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb);
+
 int proc_sched_get_initial_placement_strategy(void);
+
 ErtsRunQueue* proc_sched_initial_placement (Process* proc);
 
 
@@ -79,6 +81,7 @@ int proc_sched_work_stealing(ErtsRunQueue*);
  * Misc
  ****************************************************
  ****************************************************/
+
 #ifdef ERTS_SMP
 ERTS_INLINE void get_no_runqs(int *active, int *used);
 ERTS_INLINE void set_no_active_runqs(int active);

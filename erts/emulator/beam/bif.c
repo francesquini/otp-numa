@@ -4293,14 +4293,27 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
 //	    "information see the erlang:system_flag/2 documentation.\n");
 	return erts_bind_schedulers(BIF_P, BIF_ARG_2);
     }
+#ifdef ERTS_SMP
     else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
-    	int newVal;
     	int ret = proc_sched_get_initial_placement_strategy();
-    	if (!is_small(BIF_ARG_2))
-       		goto error;
-    	newVal = signed_val(BIF_ARG_2);
-    	proc_sched_set_initial_placement_strategy(newVal);
-    	BIF_RET(make_small(ret));
+    	if (is_small(BIF_ARG_2)) {
+    		int newVal = signed_val(BIF_ARG_2);
+			proc_sched_set_initial_placement_strategy(newVal);
+			BIF_RET(make_small(ret));
+    	} else if (is_tuple(BIF_ARG_2)) {
+    		Eterm operation, str, after;
+    		Eterm* tp3 = tuple_val(BIF_ARG_2);
+    		if (*tp3 != make_arityval(3)) goto error;
+    		str = tp3[1];
+    		operation = tp3[2];
+    		after = tp3[3];
+    		if (!ERTS_IS_ATOM_STR("after", operation) || !is_small(str) || !is_small(after))
+    			goto error;
+       		proc_sched_set_initial_placement_strategy_after(signed_val(str), unsigned_val(after));
+    		BIF_RET(make_small(ret));
+    	} else {
+    		goto error;
+    	}
     } else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
     	int newVal;
     	int ret = proc_sched_get_migration_strategy();
@@ -4318,6 +4331,7 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     	proc_sched_set_ws_strategy(newVal);
     	BIF_RET(make_small(ret));
     }
+#endif
 
     error:
     BIF_ERROR(BIF_P, BADARG);

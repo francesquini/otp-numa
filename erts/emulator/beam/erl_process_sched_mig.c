@@ -29,7 +29,10 @@ typedef struct {
 } ErtsRunQueueCompare;
 static ErtsRunQueueCompare *run_queue_compare;
 
+#endif
+
 ERTS_INLINE void proc_sched_migrate_initialize(Uint no_runqs, Uint no_schedulers, Uint no_schedulers_online) {
+#ifdef ERTS_SMP
 	erts_aint32_t no_runqs_tmp;
 	if (erts_no_run_queues != 1) {
 		run_queue_info = erts_alloc(ERTS_ALC_T_RUNQ_BLNS,
@@ -52,9 +55,9 @@ ERTS_INLINE void proc_sched_migrate_initialize(Uint no_runqs, Uint no_schedulers
 	balance_info.prev_rise.max_len = 0;
 	balance_info.prev_rise.reds = 0;
 	balance_info.n = 0;
-
-}
 #endif
+}
+
 
 /***************************
  ***************************
@@ -64,12 +67,14 @@ ERTS_INLINE void proc_sched_migrate_initialize(Uint no_runqs, Uint no_schedulers
 
 //Forward declaration
 #ifdef ERTS_SMP
-static ERTS_INLINE void default_check_balance(ErtsRunQueue *rq);
+static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *rq);
 #endif
 
-void proc_sched_migrate_default_cb(ErtsRunQueue* rq) {
+Uint proc_sched_migrate_default_cb(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
-	default_check_balance(rq);
+	return default_check_balance(rq);
+#else
+	return 0;
 #endif
 }
 
@@ -85,8 +90,9 @@ void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq) {
  ***************************
  ***************************/
 
-void proc_sched_migrate_disabled_cb(ErtsRunQueue* rq) {
+Uint proc_sched_migrate_disabled_cb(ErtsRunQueue* rq) {
 	rq->check_balance_reds = INT_MAX;
+	return 0;
 }
 
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* ign) {
@@ -564,14 +570,15 @@ static ERTS_INLINE void write_migration_paths(int blnc_no_rqs, int freds_hist_ix
 	}
 }
 
-static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
+static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *c_rq) {
 	int forced, active, current_active, blnc_no_rqs, freds_hist_ix;
+	Uint ret;
 	struct avail_calc ac;
 
 	//checks if some other scheduler is check-balancing
 	if (erts_smp_atomic32_xchg_nob(&balance_info.checking_balance, 1)) {
 		c_rq->check_balance_reds = INT_MAX;
-		return;
+		return - 1;
 	}
 
 	//if the number of online schedulers == 1, nothing to be done
@@ -579,13 +586,13 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 	if (blnc_no_rqs == 1) {
 		c_rq->check_balance_reds = INT_MAX;
 		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
-		return;
+		return -1;
 	}
 
 	erts_smp_runq_unlock(c_rq);
 
 	//Half-time check. Checks if schedulers are active and flags them
-	if (half_time_check(c_rq)) return;
+	if (half_time_check(c_rq)) return -1;
 
 	/*
 	 * check_balance() is never called in more threads
@@ -609,7 +616,7 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 		erts_smp_runq_lock(c_rq);
 		c_rq->check_balance_reds = INT_MAX;
 		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
-		return;
+		return -1;
 	}
 
 	freds_hist_ix = balance_info.full_reds_history_index;
@@ -645,8 +652,12 @@ static ERTS_INLINE void default_check_balance(ErtsRunQueue *c_rq) {
 	write_migration_paths(blnc_no_rqs, freds_hist_ix);
 
 	balance_info.n++;
+	ret = balance_info.n;
+
 	erts_smp_mtx_unlock(&balance_info.update_mtx);
 
 	erts_smp_runq_lock(c_rq);
+
+	return ret;
 }
 #endif

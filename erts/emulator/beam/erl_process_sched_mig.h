@@ -7,9 +7,7 @@
 
 #include "erl_process.h"
 
-#ifdef ERTS_SMP
 ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, Uint no_schedulers, Uint no_schedulers_online);
-#endif
 
 #define ERTS_NO_USED_RUNQS_SHIFT 16
 #define ERTS_NO_RUNQS_MASK 0xffff
@@ -22,10 +20,10 @@ ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, Uint no_schedulers,
 #  error default_check_balance() assumes ERTS_MAX_PROCESS < (1 << 27)
 #endif
 
-void proc_sched_migrate_default_cb(ErtsRunQueue* rq);
+Uint proc_sched_migrate_default_cb(ErtsRunQueue* rq);
 void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
 
-void proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
+Uint proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* rq);
 
 #ifdef ERTS_SMP

@@ -3081,9 +3081,7 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 		rq->ports.end = NULL;
 	}
 
-#ifdef ERTS_SMP
 	proc_sched_initialize(erts_no_run_queues, no_schedulers, no_schedulers_online);
-#endif
 
 	n = (int) no_schedulers;
 	erts_no_schedulers = n;
