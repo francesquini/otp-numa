@@ -42,7 +42,7 @@ typedef struct struct_balance_info {
     } prev_rise;
     Uint n;
 } balance_info_type;
-static balance_info_type balance_info;
+balance_info_type balance_info;
 #endif
 
 
