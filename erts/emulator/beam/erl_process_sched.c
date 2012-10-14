@@ -65,8 +65,12 @@ void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str,
 	erts_smp_mtx_lock(&balance_info.update_mtx);
 	n = balance_info.n;
 #endif
-	SCHEDULED_IP_STRATEGY = str;
-	SCHEDULED_IP_CHANGEMENT = n + after_no_cb;
+	if (after_no_cb == 0) {
+		SCHEDULED_IP_CHANGEMENT = INT_MAX;
+	} else {
+		SCHEDULED_IP_STRATEGY = str;
+		SCHEDULED_IP_CHANGEMENT = n + after_no_cb;
+	}
 #ifdef ERTS_SMP
 	erts_smp_mtx_unlock(&balance_info.update_mtx);
 #endif
