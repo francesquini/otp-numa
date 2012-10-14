@@ -578,7 +578,7 @@ static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *c_rq) {
 	//checks if some other scheduler is check-balancing
 	if (erts_smp_atomic32_xchg_nob(&balance_info.checking_balance, 1)) {
 		c_rq->check_balance_reds = INT_MAX;
-		return - 1;
+		return 0;
 	}
 
 	//if the number of online schedulers == 1, nothing to be done
@@ -586,13 +586,13 @@ static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *c_rq) {
 	if (blnc_no_rqs == 1) {
 		c_rq->check_balance_reds = INT_MAX;
 		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
-		return -1;
+		return 0;
 	}
 
 	erts_smp_runq_unlock(c_rq);
 
 	//Half-time check. Checks if schedulers are active and flags them
-	if (half_time_check(c_rq)) return -1;
+	if (half_time_check(c_rq)) return 0;
 
 	/*
 	 * check_balance() is never called in more threads
@@ -616,7 +616,7 @@ static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *c_rq) {
 		erts_smp_runq_lock(c_rq);
 		c_rq->check_balance_reds = INT_MAX;
 		erts_smp_atomic32_set_nob(&balance_info.checking_balance, 0);
-		return -1;
+		return 0;
 	}
 
 	freds_hist_ix = balance_info.full_reds_history_index;

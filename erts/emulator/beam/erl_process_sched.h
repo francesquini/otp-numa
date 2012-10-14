@@ -45,8 +45,8 @@ ErtsRunQueue* proc_sched_initial_placement (Process* proc);
 
 /* Possible migration strategies */
 typedef enum enum_proc_sched_migration_strategy {
-	PROC_SCHED_MIGRATION_DEFAULT,
-	PROC_SCHED_MIGRATION_DISABLED
+	PROC_SCHED_MIGRATION_DEFAULT = 0,
+	PROC_SCHED_MIGRATION_DISABLED = 1
 } proc_sched_migration_strategy;
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy);
@@ -65,8 +65,8 @@ void proc_sched_immigrate (ErtsRunQueue*);
 
 /* Possible migration strategies */
 typedef enum enum_proc_sched_ws_strategy {
-	PROC_SCHED_WS_DEFAULT,
-	PROC_SCHED_WS_DISABLED
+	PROC_SCHED_WS_DEFAULT = 0,
+	PROC_SCHED_WS_DISABLED = 1
 } proc_sched_ws_strategy;
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy);
