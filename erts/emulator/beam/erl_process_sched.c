@@ -106,10 +106,6 @@ ERTS_INLINE static void proc_sched_cb_initialize(void) {
 
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
-#ifdef USE_VM_PROBES
-	//if (DTRACE_ENABLED(scheduler_cb_strategy_change))
-	DTRACE1(scheduler_cb_strategy_change, strategy);
-#endif
 	switch (strategy) {
 	case PROC_SCHED_MIGRATION_DEFAULT:
 		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
@@ -122,6 +118,9 @@ void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	default:
 		return;
 	}
+#ifdef USE_VM_PROBES
+	DTRACE1(scheduler_cb_strategy_change, strategy);
+#endif
 	PROC_SCHED_CURRENT_MIGRATION_STRATEGY = strategy;
 }
 
@@ -164,10 +163,6 @@ ERTS_INLINE static void proc_sched_ws_initialize(void) {
 
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
-#ifdef USE_VM_PROBES
-	//if (DTRACE_ENABLED(scheduler_ws_strategy_change))
-	DTRACE1(scheduler_ws_strategy_change, strategy);
-#endif
 	switch (strategy) {
 	case PROC_SCHED_WS_DEFAULT:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
@@ -178,6 +173,10 @@ void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
 	default:
 		return;
 	}
+#ifdef USE_VM_PROBES
+	//if (DTRACE_ENABLED(scheduler_ws_strategy_change))
+	DTRACE1(scheduler_ws_strategy_change, strategy);
+#endif
 	PROC_SCHED_CURRENT_WS_STRATEGY = strategy;
 }
 
