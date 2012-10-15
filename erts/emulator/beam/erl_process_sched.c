@@ -10,6 +10,9 @@
 ERTS_INLINE static void proc_sched_ip_initialize(void);
 ERTS_INLINE static void proc_sched_cb_initialize(void);
 ERTS_INLINE static void proc_sched_ws_initialize(void);
+ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
+ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy);
+ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy);
 ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
 
 /***************************
@@ -46,11 +49,16 @@ ERTS_INLINE static void proc_sched_ip_initialize(void) {
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_RANDOM] = &proc_sched_ip_random;  //1
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_CIRCULAR] = &proc_sched_ip_circular; //2
 
-	proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT);
+	internal_proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT);
 }
 
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
+	if (strategy == PROC_SCHED_CURRENT_IP_STRATEGY) return;
+	internal_proc_sched_set_initial_placement_strategy (strategy);
+}
+
+ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
 #ifdef USE_VM_PROBES
 	//if (DTRACE_ENABLED(scheduler_ip_change))
 	DTRACE1(scheduler_ip_strategy_change, strategy);
@@ -101,11 +109,16 @@ static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *);
 
 
 ERTS_INLINE static void proc_sched_cb_initialize(void) {
-	proc_sched_set_migration_strategy(PROC_SCHED_MIGRATION_DEFAULT);
+	internal_proc_sched_set_migration_strategy(PROC_SCHED_MIGRATION_DEFAULT);
 }
 
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
+	if (PROC_SCHED_CURRENT_MIGRATION_STRATEGY == strategy) return;
+	internal_proc_sched_set_migration_strategy(strategy);
+}
+
+ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	switch (strategy) {
 	case PROC_SCHED_MIGRATION_DEFAULT:
 		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
@@ -158,11 +171,16 @@ static int (*PROC_SCHED_CURR_WS_STG_FUN)(ErtsRunQueue *) = &proc_sched_ws_defaul
 
 
 ERTS_INLINE static void proc_sched_ws_initialize(void) {
-	proc_sched_set_ws_strategy(PROC_SCHED_WS_DEFAULT);
+	internal_proc_sched_set_ws_strategy(PROC_SCHED_WS_DEFAULT);
 }
 
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
+	if (strategy == PROC_SCHED_CURRENT_WS_STRATEGY) return;
+	internal_proc_sched_set_ws_strategy(strategy);
+}
+
+ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
 	switch (strategy) {
 	case PROC_SCHED_WS_DEFAULT:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
