@@ -26,7 +26,9 @@ void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers
 typedef enum enum_proc_sched_ip_strategy {
 	PROC_SCHED_IP_DEFAULT = 0,
 	PROC_SCHED_IP_RANDOM = 1,
-	PROC_SCHED_IP_CIRCULAR = 2
+	PROC_SCHED_IP_CIRCULAR = 2,
+	PROC_SCHED_IP_SIMPLE_RANDOM = 3,
+	PROC_SCHED_IP_LOCAL_CIRCULAR = 4
 } proc_sched_ip_strategy;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
@@ -63,7 +65,7 @@ void proc_sched_immigrate (ErtsRunQueue*);
  ****************************************************
  ****************************************************/
 
-/* Possible migration strategies */
+/* Possible work stealing strategies */
 typedef enum enum_proc_sched_ws_strategy {
 	PROC_SCHED_WS_DEFAULT = 0,
 	PROC_SCHED_WS_DISABLED = 1

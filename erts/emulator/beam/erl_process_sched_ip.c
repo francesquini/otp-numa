@@ -8,21 +8,6 @@
 
 /*This file contains the implementation of the initial placement strategies*/
 
-/*Common state variables*/
-
-static __thread int proc_sched_ip_random_initialized = 0;
-static __thread unsigned int proc_sched_ip_random_seed;
-
-//Local strategy functions
-static void proc_sched_ip_random_initialize(void) {
-	if (!proc_sched_ip_random_initialized) {
-		pid_t pid = getpid();
-		struct timespec ts;
-		clock_gettime(CLOCK_MONOTONIC, &ts);
-		proc_sched_ip_random_seed = pid * ts.tv_nsec / ts.tv_sec;
-		proc_sched_ip_random_initialized = 1;
-	}
-}
 
 /***************************
  ***************************
@@ -36,9 +21,23 @@ ErtsRunQueue* proc_sched_ip_default(Process* parent) {
 
 /***************************
  ***************************
- * Random
+ * Random - srand
  ***************************
  ***************************/
+
+static __thread int proc_sched_ip_random_initialized = 0;
+static __thread unsigned int proc_sched_ip_random_seed;
+
+ERTS_INLINE static void proc_sched_ip_random_initialize(void) {
+	if (!proc_sched_ip_random_initialized) {
+		pid_t pid = getpid();
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		proc_sched_ip_random_seed = pid * ts.tv_nsec / ts.tv_sec;
+		proc_sched_ip_random_initialized = 1;
+	}
+}
+
 
 ErtsRunQueue* proc_sched_ip_random(Process* ign) {
 	unsigned int rand, scheduler;
@@ -48,16 +47,76 @@ ErtsRunQueue* proc_sched_ip_random(Process* ign) {
 	return ERTS_RUNQ_IX(scheduler);
 }
 
+
+/***************************
+ ***************************
+ * Random - Simple RNG
+ ***************************
+ ***************************/
+
+static __thread int simple_rng_initialized = 0;
+static __thread unsigned int simple_rng_s_mw = 521288629;
+static __thread unsigned int simple_rng_s_mz = 362436069;
+
+ERTS_INLINE static void simple_rng_initialize(void) {
+	if (!simple_rng_initialized) {
+		unsigned int n1, n2;
+		pid_t pid = getpid();
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		n1 = ((pid * 104623 + ts.tv_nsec * 96487 + ts.tv_sec * 75997) * 45587) % 4294967296;
+		if (n1) simple_rng_s_mw = n1;
+		n2 = ((pid * 48947 + ts.tv_nsec * 33181 + ts.tv_sec * 87523) * 101839) % 4294967296;
+		if (n2) simple_rng_s_mz = n2;
+		simple_rng_initialized = 1;
+	}
+}
+
+
+/// SimpleRNG is a simple random number generator based on
+/// George Marsaglia's MWC (multiply with carry) generator.
+/// Although it is very simple, it passes Marsaglia's DIEHARD
+/// series of random number generator tests.
+/// Written by John D. Cook
+
+ERTS_INLINE static unsigned int simple_rng_next(unsigned int mod) {
+	// 0 <= u < 2^32
+	unsigned int u;
+	simple_rng_s_mz = 36969 * (simple_rng_s_mz & 65535) + (simple_rng_s_mz >> 16);
+	simple_rng_s_mw = 18000 * (simple_rng_s_mw & 65535) + (simple_rng_s_mw >> 16);
+	u = (simple_rng_s_mz << 16) + simple_rng_s_mw;
+	return u % mod;
+}
+
+
+ErtsRunQueue* proc_sched_ip_simple_random(Process* ign) {
+	simple_rng_initialize();
+	return ERTS_RUNQ_IX(simple_rng_next(erts_no_run_queues));
+}
+
 /***************************
  ***************************
  * Circular
  ***************************
  ***************************/
 
-volatile unsigned long long proc_sched_ip_circular_next = 0;
+static unsigned long long proc_sched_ip_circular_next = 0;
 
 ErtsRunQueue* proc_sched_ip_circular(Process* ign) {
 	unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
 	unsigned long long next = nextBig % erts_no_run_queues;
 	return ERTS_RUNQ_IX(next);
+}
+
+/***************************
+ ***************************
+ * Local Circular
+ ***************************
+ ***************************/
+
+static __thread unsigned int local_circular_next = 0;
+
+ErtsRunQueue* proc_sched_ip_local_circular(Process* ign) {
+	local_circular_next = (local_circular_next + 1) % erts_no_run_queues;
+	return ERTS_RUNQ_IX(local_circular_next);
 }
