@@ -6059,15 +6059,23 @@ ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, schedulin
 		if (p->deferred_heap_allocation) {
 			//First time this process is scheduled.
 			//We should copy the heap to the local NUMA node
-			if (sd->rq->ix != p->home_scheduler_ix) {
-				proc_mem_log("Home scheduler isn't the same as the first scheduler, updating home\n");
-				p->home_scheduler_ix = sd->rq->ix;
+			int current_node;
+			current_node = erts_get_scheduler_numa_node(sd->rq->ix + 1);
+			if (current_node == -1) {
+				proc_mem_log("Scheduler not yet bound, heap copy postponed until next scheduling");
+			} else {
+				if (current_node != p->home_numa_node) {
+					proc_mem_log("Home scheduler isn't in the same node as the first scheduler node, updating home\n");
+					p->home_numa_node = current_node;
+				}
+				if (current_node != p->spawning_numa_node) {
+					//The spawning node might be unknown (-1) if the parent was spawned before
+					//the scheduler had the chance to bind.
+					//Since here the current_node is known, relocates the heap anyway
+					erts_relocate_heap(p);
+				}
+				p->deferred_heap_allocation = 0;
 			}
-
-			if (p->home_scheduler_ix != p->spawning_scheduler_ix) {
-				erts_relocate_heap(p);
-			}
-			p->deferred_heap_allocation = 0;
 		}
 
 		p->runq_flags |= ERTS_PROC_RUNQ_FLG_RUNNING;
@@ -6582,9 +6590,9 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 #endif
 
 #ifdef ERTS_SMP
-	p->spawning_scheduler_ix = erts_get_runq_proc(parent)->ix;
+	p->spawning_numa_node = erts_get_scheduler_numa_node(erts_get_runq_proc(parent)->ix + 1);
 	p->deferred_heap_allocation = proc_mem_deffered;
-	proc_mem_log("Spawn. Home: %d Running @: %d\n", p->spawning_scheduler_ix, sched_getcpu());
+	proc_mem_log("Spawn. Spawning: %d Running @: %d\n", p->spawning_numa_node, sched_getcpu());
 #endif
 
 	p->heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*sz);
@@ -6776,7 +6784,7 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 
 #ifdef ERTS_SMP
 	p->run_queue = rq;
-	p->home_scheduler_ix = rq->ix;
+	p->home_numa_node = erts_get_scheduler_numa_node(rq->ix + 1);
 #endif
 
 	p->status = P_WAITING;

@@ -2037,7 +2037,7 @@ void erts_relocate_heap (Process *p) {
 	HEAP_START(p) = new_heap;
 	ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) old_heap, heap_size);
 	proc_mem_log("Relocating heap. Spawning: %d Home: %d Running @: %d\n",
-				p->spawning_scheduler_ix, p->home_scheduler_ix, sched_getcpu());
+				p->spawning_numa_node, p->home_numa_node, sched_getcpu());
 }
 #endif
 

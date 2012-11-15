@@ -34,6 +34,7 @@
 #include "bif.h"
 #include "erl_cpu_topology.h"
 #include "erl_process_mem.h"
+#include <numa.h>
 
 #define ERTS_MAX_READER_GROUPS 8
 
@@ -52,6 +53,7 @@
 typedef struct {
     int bind_id;
     int bound_id;
+    int numa_node;
 } ErtsCpuBindData;
 
 static erts_cpu_info_t *cpuinfo;
@@ -585,26 +587,25 @@ erts_sched_init_check_cpu_bind(ErtsSchedulerData *esdp)
 }
 #endif
 
-static void
-write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
-{
-    int s_ix = 1;
-    int cpu_ix;
-
-    ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
-
-    if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
-
-	cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
-
-	for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
-	    if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical))
-		scheduler2cpu_map[s_ix++].bind_id = cpudata[cpu_ix].logical;
-    }
-
-    if (s_ix <= erts_no_schedulers)
-	for (; s_ix <= erts_no_schedulers; s_ix++)
-	    scheduler2cpu_map[s_ix].bind_id = -1;
+static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size) {
+	int s_ix = 1;
+	int cpu_ix;
+	ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
+	if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
+		cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
+		for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
+			if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical)) {
+				int cpu = cpudata[cpu_ix].logical;
+				scheduler2cpu_map[s_ix].bind_id = cpu;
+				scheduler2cpu_map[s_ix].numa_node = numa_node_of_cpu(cpu);
+				s_ix++;
+			}
+	}
+	if (s_ix <= erts_no_schedulers)
+		for (; s_ix <= erts_no_schedulers; s_ix++) {
+			scheduler2cpu_map[s_ix].bind_id = -1;
+			scheduler2cpu_map[s_ix].numa_node = -1;
+		}
 }
 
 int
@@ -1611,6 +1612,10 @@ get_cpu_topology_term(Process *c_p, int type)
     return res;
 }
 
+int erts_get_scheduler_numa_node(int scheduler) {
+	return scheduler2cpu_map[scheduler].numa_node;
+}
+
 Eterm
 erts_get_cpu_topology_term(Process *c_p, Eterm which)
 {
@@ -1702,40 +1707,39 @@ erts_early_init_cpu_topology(int no_schedulers,
     *reader_groups_p = reader_groups;
 }
 
-void
-erts_init_cpu_topology(void)
-{
-    int ix;
+void erts_init_cpu_topology(void) {
+	int ix;
 
-    erts_smp_rwmtx_init(&cpuinfo_rwmtx, "cpu_info");
-    erts_smp_rwmtx_rwlock(&cpuinfo_rwmtx);
+	erts_smp_rwmtx_init(&cpuinfo_rwmtx, "cpu_info");
+	erts_smp_rwmtx_rwlock(&cpuinfo_rwmtx);
 
-    scheduler2cpu_map = erts_alloc(ERTS_ALC_T_CPUDATA,
-				   (sizeof(ErtsCpuBindData)
-				    * (erts_no_schedulers+1)));
-    for (ix = 1; ix <= erts_no_schedulers; ix++) {
-	scheduler2cpu_map[ix].bind_id = -1;
-	scheduler2cpu_map[ix].bound_id = -1;
-    }
+	scheduler2cpu_map = erts_alloc(ERTS_ALC_T_CPUDATA,
+			(sizeof(ErtsCpuBindData)
+					* (erts_no_schedulers+1)));
+	for (ix = 1; ix <= erts_no_schedulers; ix++) {
+		scheduler2cpu_map[ix].bind_id = -1;
+		scheduler2cpu_map[ix].bound_id = -1;
+		scheduler2cpu_map[ix].numa_node = -1;
+	}
 
-    if (cpu_bind_order == ERTS_CPU_BIND_UNDEFINED)
-	cpu_bind_order = ERTS_CPU_BIND_NONE;
+	if (cpu_bind_order == ERTS_CPU_BIND_UNDEFINED)
+		cpu_bind_order = ERTS_CPU_BIND_NONE;
 
-    reader_groups_map = add_cpu_groups(reader_groups,
-				       reader_groups_callback,
-				       NULL);
+	reader_groups_map = add_cpu_groups(reader_groups,
+			reader_groups_callback,
+			NULL);
 
-    if (cpu_bind_order == ERTS_CPU_BIND_NONE)
-	erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
-    else {
-	erts_cpu_topology_t *cpudata;
-	int cpudata_size;
-	create_tmp_cpu_topology_copy(&cpudata, &cpudata_size);
-	write_schedulers_bind_change(cpudata, cpudata_size);
-	erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
-	erts_sched_notify_check_cpu_bind();
-	destroy_tmp_cpu_topology_copy(cpudata);
-    }
+	if (cpu_bind_order == ERTS_CPU_BIND_NONE)
+		erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
+	else {
+		erts_cpu_topology_t *cpudata;
+		int cpudata_size;
+		create_tmp_cpu_topology_copy(&cpudata, &cpudata_size);
+		write_schedulers_bind_change(cpudata, cpudata_size);
+		erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
+		erts_sched_notify_check_cpu_bind();
+		destroy_tmp_cpu_topology_copy(cpudata);
+	}
 }
 
 int

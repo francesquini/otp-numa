@@ -86,6 +86,8 @@ int erts_update_cpu_info(void);
 Eterm erts_bind_schedulers(Process *c_p, Eterm how);
 Eterm erts_get_schedulers_binds(Process *c_p);
 
+int erts_get_scheduler_numa_node (int scheduler);
+
 Eterm erts_get_reader_groups_map(Process *c_p);
 
 Eterm erts_set_cpu_topology(Process *c_p, Eterm term);

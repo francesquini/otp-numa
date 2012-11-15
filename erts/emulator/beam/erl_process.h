@@ -849,8 +849,8 @@ struct process {
 
 #ifdef ERTS_SMP
     char deferred_heap_allocation;
-    int spawning_scheduler_ix;
-    int home_scheduler_ix;
+    int spawning_numa_node;
+    int home_numa_node;
 #endif
 
 };
