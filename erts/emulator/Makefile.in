@@ -347,7 +347,7 @@ LIBS += -l$(ERTS_INTERNAL_LIB)$(TYPEMARKER)
 endif # erts_internal_r
 
 LIBS += @LIBRT@
-LIBS += -lnuma 
+LIBS += -lnuma -ltcmalloc 
 
 LIBS += @LIBCARBON@
 
