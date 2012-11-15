@@ -15,7 +15,6 @@
 
 void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online);
 
-
 /****************************************************
  ****************************************************
  * Initial placement

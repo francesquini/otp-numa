@@ -26,6 +26,8 @@
 #ifndef ERL_CPU_TOPOLOGY_H__
 #define ERL_CPU_TOPOLOGY_H__
 
+#include "erl_process.h"
+
 void erts_pre_early_init_cpu_topology(int *max_rg_p,
 				      int *conf_p,
 				      int *onln_p,
@@ -41,6 +43,20 @@ void erts_init_cpu_topology(void);
 #define ERTS_INIT_SCHED_BIND_TYPE_NOT_SUPPORTED		1
 #define ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_CPU_TOPOLOGY	2
 #define ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE	3
+
+typedef enum {
+    ERTS_CPU_BIND_UNDEFINED,
+    ERTS_CPU_BIND_SPREAD,
+    ERTS_CPU_BIND_PROCESSOR_SPREAD,
+    ERTS_CPU_BIND_THREAD_SPREAD,
+    ERTS_CPU_BIND_THREAD_NO_NODE_PROCESSOR_SPREAD,
+    ERTS_CPU_BIND_NO_NODE_PROCESSOR_SPREAD,
+    ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD,
+    ERTS_CPU_BIND_NO_SPREAD,
+    ERTS_CPU_BIND_NONE
+} ErtsCpuBindOrder;
+
+ErtsCpuBindOrder erts_bound_schedulers_order (void);
 
 int erts_init_scheduler_bind_type_string(char *how);
 

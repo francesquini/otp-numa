@@ -178,307 +178,307 @@ Uint size_object(Eterm obj)
  */
 #if HALFWORD_HEAP
 Eterm copy_struct_rel(Eterm obj, Uint sz, Eterm** hpp, ErlOffHeap* off_heap,
-                      Eterm* src_base, Eterm* dst_base)
+		Eterm* src_base, Eterm* dst_base)
 #else
 Eterm copy_struct(Eterm obj, Uint sz, Eterm** hpp, ErlOffHeap* off_heap)
 #endif
 {
-    char* hstart;
-    Uint hsize;
-    Eterm* htop;
-    Eterm* hbot;
-    Eterm* hp;
-    Eterm* objp;
-    Eterm* tp;
-    Eterm  res;
-    Eterm  elem;
-    Eterm* tailp;
-    Eterm* argp;
-    Eterm* const_tuple;
-    Eterm hdr;
-    int i;
+	char* hstart;
+	Uint hsize;
+	Eterm* htop;
+	Eterm* hbot;
+	Eterm* hp;
+	Eterm* objp;
+	Eterm* tp;
+	Eterm  res;
+	Eterm  elem;
+	Eterm* tailp;
+	Eterm* argp;
+	Eterm* const_tuple;
+	Eterm hdr;
+	int i;
 #ifdef DEBUG
-    Eterm org_obj = obj;
-    Uint org_sz = sz;
+	Eterm org_obj = obj;
+	Uint org_sz = sz;
 #endif
 
-    if (IS_CONST(obj))
-	return obj;
+	if (IS_CONST(obj))
+		return obj;
 
-    DTRACE1(copy_struct, (int32_t)sz);
+	DTRACE1(copy_struct, (int32_t)sz);
 
-    hp = htop = *hpp;
-    hbot   = htop + sz;
-    hstart = (char *)htop;
-    hsize = (char*) hbot - hstart;
-    const_tuple = 0;
+	hp = htop = *hpp;
+	hbot   = htop + sz;
+	hstart = (char *)htop;
+	hsize = (char*) hbot - hstart;
+	const_tuple = 0;
 
-    /* Copy the object onto the heap */
-    switch (primary_tag(obj)) {
-    case TAG_PRIMARY_LIST:
-	argp = &res;
-	objp = list_val_rel(obj,src_base);
-	goto L_copy_list;
-    case TAG_PRIMARY_BOXED: argp = &res; goto L_copy_boxed;
-    default:
-	erl_exit(ERTS_ABORT_EXIT,
-		 "%s, line %d: Internal error in copy_struct: 0x%08x\n",
-		 __FILE__, __LINE__,obj);
-    }
-
- L_copy:
-    while (hp != htop) {
-	obj = *hp;
-
+	/* Copy the object onto the heap */
 	switch (primary_tag(obj)) {
-	case TAG_PRIMARY_IMMED1:
-	    hp++;
-	    break;
 	case TAG_PRIMARY_LIST:
-	    objp = list_val_rel(obj,src_base);
-	#if !HALFWORD_HEAP || defined(DEBUG)
-	    if (in_area(objp,hstart,hsize)) {
-		ASSERT(!HALFWORD_HEAP);
-		hp++;
-		break;
-	    }
-	#endif
-	    argp = hp++;
-	    /* Fall through */
-
-	L_copy_list:
-	    tailp = argp;
-	    for (;;) {
-		tp = tailp;
-		elem = CAR(objp);
-		if (IS_CONST(elem)) {
-		    hbot -= 2;
-		    CAR(hbot) = elem;
-		    tailp = &CDR(hbot);
-		}
-		else {
-		    CAR(htop) = elem;
-		#if HALFWORD_HEAP
-		    CDR(htop) = CDR(objp);
-		    *tailp = make_list_rel(htop,dst_base);
-		    htop += 2;
-		    goto L_copy;
-		#else
-		    tailp = &CDR(htop);
-		    htop += 2;
-		#endif
-		}
-		ASSERT(!HALFWORD_HEAP || tp < hp || tp >= hbot);
-		*tp = make_list_rel(tailp - 1, dst_base);
-		obj = CDR(objp);
-		if (!is_list(obj)) {
-		    break;
-		}
+		argp = &res;
 		objp = list_val_rel(obj,src_base);
-	    }
-	    switch (primary_tag(obj)) {
-	    case TAG_PRIMARY_IMMED1: *tailp = obj; goto L_copy;
-	    case TAG_PRIMARY_BOXED: argp = tailp; goto L_copy_boxed;
-	    default:
+		goto L_copy_list;
+	case TAG_PRIMARY_BOXED: argp = &res; goto L_copy_boxed;
+	default:
 		erl_exit(ERTS_ABORT_EXIT,
-			 "%s, line %d: Internal error in copy_struct: 0x%08x\n",
-			 __FILE__, __LINE__,obj);
-	    }
-	    
-	case TAG_PRIMARY_BOXED:
-	#if !HALFWORD_HEAP || defined(DEBUG)
-	    if (in_area(boxed_val_rel(obj,src_base),hstart,hsize)) {
-		ASSERT(!HALFWORD_HEAP);
-		hp++;
-		break;
-	    }
-	#endif
-	    argp = hp++;
-
-	L_copy_boxed:
-	    objp = boxed_val_rel(obj, src_base);
-	    hdr = *objp;
-	    switch (hdr & _TAG_HEADER_MASK) {
-	    case ARITYVAL_SUBTAG:
-		{
-		    int const_flag = 1; /* assume constant tuple */
-		    i = arityval(hdr);
-		    *argp = make_tuple_rel(htop, dst_base);
-		    tp = htop;	/* tp is pointer to new arity value */
-		    *htop++ = *objp++; /* copy arity value */
-		    while (i--) {
-			elem = *objp++;
-			if (!IS_CONST(elem)) {
-			    const_flag = 0;
-			}
-			*htop++ = elem;
-		    }
-		    if (const_flag) {
-			const_tuple = tp; /* this is the latest const_tuple */
-		    }
-		}
-		break;
-	    case REFC_BINARY_SUBTAG:
-		{
-		    ProcBin* pb;
-
-		    pb = (ProcBin *) objp;
-		    if (pb->flags) {
-			erts_emasculate_writable_binary(pb);
-		    }
-		    i = thing_arityval(*objp) + 1;
-		    hbot -= i;
-		    tp = hbot;
-		    while (i--)  {
-			*tp++ = *objp++;
-		    }
-		    *argp = make_binary_rel(hbot, dst_base);
-		    pb = (ProcBin*) hbot;
-		    erts_refc_inc(&pb->val->refc, 2);
-		    pb->next = off_heap->first;
-		    pb->flags = 0;
-		    off_heap->first = (struct erl_off_heap_header*) pb;
-		    OH_OVERHEAD(off_heap, pb->size / sizeof(Eterm));
-		}
-		break;
-	    case SUB_BINARY_SUBTAG:
-		{
-		    ErlSubBin* sb = (ErlSubBin *) objp;
-		    Eterm real_bin = sb->orig;
-		    Uint bit_offset = sb->bitoffs;
-		    Uint bit_size = sb -> bitsize;
-		    Uint offset = sb->offs;
-		    size_t size = sb->size;
-		    Uint extra_bytes;
-		    Uint real_size;
-		    if ((bit_size + bit_offset) > 8) {
-			extra_bytes = 2;
-		    } else if ((bit_size + bit_offset) > 0) {
-			extra_bytes = 1;
-		    } else {
-			extra_bytes = 0;
-		    } 
-		    real_size = size+extra_bytes;
-		    objp = binary_val_rel(real_bin,src_base);
-		    if (thing_subtag(*objp) == HEAP_BINARY_SUBTAG) {
-			ErlHeapBin* from = (ErlHeapBin *) objp;
-			ErlHeapBin* to;
-			i = heap_bin_size(real_size);
-			hbot -= i;
-			to = (ErlHeapBin *) hbot;
-			to->thing_word = header_heap_bin(real_size);
-			to->size = real_size;
-			sys_memcpy(to->data, ((byte *)from->data)+offset, real_size);
-		    } else {
-			ProcBin* from = (ProcBin *) objp;
-			ProcBin* to;
-			
-			ASSERT(thing_subtag(*objp) == REFC_BINARY_SUBTAG);
-			if (from->flags) {
-			    erts_emasculate_writable_binary(from);
-			}
-			hbot -= PROC_BIN_SIZE;
-			to = (ProcBin *) hbot;
-			to->thing_word = HEADER_PROC_BIN;
-			to->size = real_size;
-			to->val = from->val;
-			erts_refc_inc(&to->val->refc, 2);
-			to->bytes = from->bytes + offset;
-			to->next = off_heap->first;
-			to->flags = 0;
-			off_heap->first = (struct erl_off_heap_header*) to;
-			OH_OVERHEAD(off_heap, to->size / sizeof(Eterm));
-		    }
-		    *argp = make_binary_rel(hbot, dst_base);
-		    if (extra_bytes != 0) {
-			ErlSubBin* res;
-			hbot -= ERL_SUB_BIN_SIZE;
-			res = (ErlSubBin *) hbot;
-			res->thing_word = HEADER_SUB_BIN;
-			res->size = size;
-			res->bitsize = bit_size;
-			res->bitoffs = bit_offset;
-			res->offs = 0;
-			res->is_writable = 0;
-			res->orig = *argp;
-			*argp = make_binary_rel(hbot, dst_base);
-		    }
-		    break;
-		}
-		break;
-	    case FUN_SUBTAG:
-		{
-		    ErlFunThing* funp = (ErlFunThing *) objp;
-
-		    i =  thing_arityval(hdr) + 2 + funp->num_free;
-		    tp = htop;
-		    while (i--)  {
-			*htop++ = *objp++;
-		    }
-		    funp = (ErlFunThing *) tp;
-		    funp->next = off_heap->first;
-		    off_heap->first = (struct erl_off_heap_header*) funp;
-		    erts_refc_inc(&funp->fe->refc, 2);
-		    *argp = make_fun_rel(tp, dst_base);
-		}
-		break;
-	    case EXTERNAL_PID_SUBTAG:
-	    case EXTERNAL_PORT_SUBTAG:
-	    case EXTERNAL_REF_SUBTAG:
-		{
-		  ExternalThing *etp = (ExternalThing *) htop;
-
-		  i =  thing_arityval(hdr) + 1;
-		  tp = htop;
-
-		  while (i--)  {
-		    *htop++ = *objp++;
-		  }
-
-		  etp->next = off_heap->first;
-		  off_heap->first = (struct erl_off_heap_header*)etp;
-		  erts_refc_inc(&etp->node->refc, 2);
-
-		  *argp = make_external_rel(tp, dst_base);
-		}
-		break;
-	    case BIN_MATCHSTATE_SUBTAG:
-		erl_exit(ERTS_ABORT_EXIT,
-			 "copy_struct: matchstate term not allowed");
-	    default:
-		i = thing_arityval(hdr)+1;
-		hbot -= i;
-		tp = hbot;
-		*argp = make_boxed_rel(hbot, dst_base);
-		while (i--) {
-		    *tp++ = *objp++;
-		}
-	    }
-	    break;
-	case TAG_PRIMARY_HEADER:
-	    if (header_is_thing(obj) || hp == const_tuple) {
-		hp += header_arity(obj) + 1;
-	    } else {
-		hp++;
-	    }
-	    break;
+				"%s, line %d: Internal error in copy_struct: 0x%08x\n",
+				__FILE__, __LINE__,obj);
 	}
-    }
+
+	L_copy:
+	while (hp != htop) {
+		obj = *hp;
+
+		switch (primary_tag(obj)) {
+		case TAG_PRIMARY_IMMED1:
+			hp++;
+			break;
+		case TAG_PRIMARY_LIST:
+			objp = list_val_rel(obj,src_base);
+#if !HALFWORD_HEAP || defined(DEBUG)
+			if (in_area(objp,hstart,hsize)) {
+				ASSERT(!HALFWORD_HEAP);
+				hp++;
+				break;
+			}
+#endif
+			argp = hp++;
+			/* Fall through */
+
+			L_copy_list:
+			tailp = argp;
+			for (;;) {
+				tp = tailp;
+				elem = CAR(objp);
+				if (IS_CONST(elem)) {
+					hbot -= 2;
+					CAR(hbot) = elem;
+					tailp = &CDR(hbot);
+				}
+				else {
+					CAR(htop) = elem;
+#if HALFWORD_HEAP
+					CDR(htop) = CDR(objp);
+					*tailp = make_list_rel(htop,dst_base);
+					htop += 2;
+					goto L_copy;
+#else
+					tailp = &CDR(htop);
+					htop += 2;
+#endif
+				}
+				ASSERT(!HALFWORD_HEAP || tp < hp || tp >= hbot);
+				*tp = make_list_rel(tailp - 1, dst_base);
+				obj = CDR(objp);
+				if (!is_list(obj)) {
+					break;
+				}
+				objp = list_val_rel(obj,src_base);
+			}
+			switch (primary_tag(obj)) {
+			case TAG_PRIMARY_IMMED1: *tailp = obj; goto L_copy;
+			case TAG_PRIMARY_BOXED: argp = tailp; goto L_copy_boxed;
+			default:
+				erl_exit(ERTS_ABORT_EXIT,
+						"%s, line %d: Internal error in copy_struct: 0x%08x\n",
+						__FILE__, __LINE__,obj);
+			}
+
+			case TAG_PRIMARY_BOXED:
+#if !HALFWORD_HEAP || defined(DEBUG)
+				if (in_area(boxed_val_rel(obj,src_base),hstart,hsize)) {
+					ASSERT(!HALFWORD_HEAP);
+					hp++;
+					break;
+				}
+#endif
+				argp = hp++;
+
+				L_copy_boxed:
+				objp = boxed_val_rel(obj, src_base);
+				hdr = *objp;
+				switch (hdr & _TAG_HEADER_MASK) {
+				case ARITYVAL_SUBTAG:
+				{
+					int const_flag = 1; /* assume constant tuple */
+					i = arityval(hdr);
+					*argp = make_tuple_rel(htop, dst_base);
+					tp = htop;	/* tp is pointer to new arity value */
+					*htop++ = *objp++; /* copy arity value */
+					while (i--) {
+						elem = *objp++;
+						if (!IS_CONST(elem)) {
+							const_flag = 0;
+						}
+						*htop++ = elem;
+					}
+					if (const_flag) {
+						const_tuple = tp; /* this is the latest const_tuple */
+					}
+				}
+				break;
+				case REFC_BINARY_SUBTAG:
+				{
+					ProcBin* pb;
+
+					pb = (ProcBin *) objp;
+					if (pb->flags) {
+						erts_emasculate_writable_binary(pb);
+					}
+					i = thing_arityval(*objp) + 1;
+					hbot -= i;
+					tp = hbot;
+					while (i--)  {
+						*tp++ = *objp++;
+					}
+					*argp = make_binary_rel(hbot, dst_base);
+					pb = (ProcBin*) hbot;
+					erts_refc_inc(&pb->val->refc, 2);
+					pb->next = off_heap->first;
+					pb->flags = 0;
+					off_heap->first = (struct erl_off_heap_header*) pb;
+					OH_OVERHEAD(off_heap, pb->size / sizeof(Eterm));
+				}
+				break;
+				case SUB_BINARY_SUBTAG:
+				{
+					ErlSubBin* sb = (ErlSubBin *) objp;
+					Eterm real_bin = sb->orig;
+					Uint bit_offset = sb->bitoffs;
+					Uint bit_size = sb -> bitsize;
+					Uint offset = sb->offs;
+					size_t size = sb->size;
+					Uint extra_bytes;
+					Uint real_size;
+					if ((bit_size + bit_offset) > 8) {
+						extra_bytes = 2;
+					} else if ((bit_size + bit_offset) > 0) {
+						extra_bytes = 1;
+					} else {
+						extra_bytes = 0;
+					}
+					real_size = size+extra_bytes;
+					objp = binary_val_rel(real_bin,src_base);
+					if (thing_subtag(*objp) == HEAP_BINARY_SUBTAG) {
+						ErlHeapBin* from = (ErlHeapBin *) objp;
+						ErlHeapBin* to;
+						i = heap_bin_size(real_size);
+						hbot -= i;
+						to = (ErlHeapBin *) hbot;
+						to->thing_word = header_heap_bin(real_size);
+						to->size = real_size;
+						sys_memcpy(to->data, ((byte *)from->data)+offset, real_size);
+					} else {
+						ProcBin* from = (ProcBin *) objp;
+						ProcBin* to;
+
+						ASSERT(thing_subtag(*objp) == REFC_BINARY_SUBTAG);
+						if (from->flags) {
+							erts_emasculate_writable_binary(from);
+						}
+						hbot -= PROC_BIN_SIZE;
+						to = (ProcBin *) hbot;
+						to->thing_word = HEADER_PROC_BIN;
+						to->size = real_size;
+						to->val = from->val;
+						erts_refc_inc(&to->val->refc, 2);
+						to->bytes = from->bytes + offset;
+						to->next = off_heap->first;
+						to->flags = 0;
+						off_heap->first = (struct erl_off_heap_header*) to;
+						OH_OVERHEAD(off_heap, to->size / sizeof(Eterm));
+					}
+					*argp = make_binary_rel(hbot, dst_base);
+					if (extra_bytes != 0) {
+						ErlSubBin* res;
+						hbot -= ERL_SUB_BIN_SIZE;
+						res = (ErlSubBin *) hbot;
+						res->thing_word = HEADER_SUB_BIN;
+						res->size = size;
+						res->bitsize = bit_size;
+						res->bitoffs = bit_offset;
+						res->offs = 0;
+						res->is_writable = 0;
+						res->orig = *argp;
+						*argp = make_binary_rel(hbot, dst_base);
+					}
+					break;
+				}
+				break;
+				case FUN_SUBTAG:
+				{
+					ErlFunThing* funp = (ErlFunThing *) objp;
+
+					i =  thing_arityval(hdr) + 2 + funp->num_free;
+					tp = htop;
+					while (i--)  {
+						*htop++ = *objp++;
+					}
+					funp = (ErlFunThing *) tp;
+					funp->next = off_heap->first;
+					off_heap->first = (struct erl_off_heap_header*) funp;
+					erts_refc_inc(&funp->fe->refc, 2);
+					*argp = make_fun_rel(tp, dst_base);
+				}
+				break;
+				case EXTERNAL_PID_SUBTAG:
+				case EXTERNAL_PORT_SUBTAG:
+				case EXTERNAL_REF_SUBTAG:
+				{
+					ExternalThing *etp = (ExternalThing *) htop;
+
+					i =  thing_arityval(hdr) + 1;
+					tp = htop;
+
+					while (i--)  {
+						*htop++ = *objp++;
+					}
+
+					etp->next = off_heap->first;
+					off_heap->first = (struct erl_off_heap_header*)etp;
+					erts_refc_inc(&etp->node->refc, 2);
+
+					*argp = make_external_rel(tp, dst_base);
+				}
+				break;
+				case BIN_MATCHSTATE_SUBTAG:
+					erl_exit(ERTS_ABORT_EXIT,
+							"copy_struct: matchstate term not allowed");
+				default:
+					i = thing_arityval(hdr)+1;
+					hbot -= i;
+					tp = hbot;
+					*argp = make_boxed_rel(hbot, dst_base);
+					while (i--) {
+						*tp++ = *objp++;
+					}
+				}
+				break;
+				case TAG_PRIMARY_HEADER:
+					if (header_is_thing(obj) || hp == const_tuple) {
+						hp += header_arity(obj) + 1;
+					} else {
+						hp++;
+					}
+					break;
+		}
+	}
 
 #ifdef DEBUG
-    if (htop != hbot)
-	erl_exit(ERTS_ABORT_EXIT,
-		 "Internal error in copy_struct() when copying %T:"
-		 " htop=%p != hbot=%p (sz=%beu)\n",
-		 org_obj, htop, hbot, org_sz); 
+	if (htop != hbot)
+		erl_exit(ERTS_ABORT_EXIT,
+				"Internal error in copy_struct() when copying %T:"
+				" htop=%p != hbot=%p (sz=%beu)\n",
+				org_obj, htop, hbot, org_sz);
 #else
-    if (htop > hbot) {
-	erl_exit(ERTS_ABORT_EXIT,
-		 "Internal error in copy_struct(): htop, hbot overrun\n");
-    }
+	if (htop > hbot) {
+		erl_exit(ERTS_ABORT_EXIT,
+				"Internal error in copy_struct(): htop, hbot overrun\n");
+	}
 #endif
-    *hpp = (Eterm *) (hstart+hsize);
-    return res;
+	*hpp = (Eterm *) (hstart+hsize);
+	return res;
 }
 
 /*

@@ -33,6 +33,7 @@
 #include "error.h"
 #include "bif.h"
 #include "erl_cpu_topology.h"
+#include "erl_process_mem.h"
 
 #define ERTS_MAX_READER_GROUPS 8
 
@@ -60,18 +61,6 @@ static int reader_groups;
 
 static ErtsCpuBindData *scheduler2cpu_map;
 static erts_smp_rwmtx_t cpuinfo_rwmtx;
-
-typedef enum {
-    ERTS_CPU_BIND_UNDEFINED,
-    ERTS_CPU_BIND_SPREAD,
-    ERTS_CPU_BIND_PROCESSOR_SPREAD,
-    ERTS_CPU_BIND_THREAD_SPREAD,
-    ERTS_CPU_BIND_THREAD_NO_NODE_PROCESSOR_SPREAD,
-    ERTS_CPU_BIND_NO_NODE_PROCESSOR_SPREAD,
-    ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD,
-    ERTS_CPU_BIND_NO_SPREAD,
-    ERTS_CPU_BIND_NONE
-} ErtsCpuBindOrder;
 
 #define ERTS_CPU_BIND_DEFAULT_BIND \
   ERTS_CPU_BIND_THREAD_NO_NODE_PROCESSOR_SPREAD
@@ -491,71 +480,69 @@ erts_sched_check_cpu_bind_post_suspend(ErtsSchedulerData *esdp)
 
 #endif
 
-void
-erts_sched_check_cpu_bind(ErtsSchedulerData *esdp)
-{
-    int res, cpu_id, cgcc_ix;
-    erts_cpu_groups_map_t *cgm;
-    erts_cpu_groups_callback_list_t *cgcl;
-    erts_cpu_groups_callback_call_t *cgcc;
+void erts_sched_check_cpu_bind(ErtsSchedulerData *esdp) {
+	int res, cpu_id, cgcc_ix;
+	erts_cpu_groups_map_t *cgm;
+	erts_cpu_groups_callback_list_t *cgcl;
+	erts_cpu_groups_callback_call_t *cgcc;
 #ifdef ERTS_SMP
-    esdp->run_queue->flags &= ~ERTS_RUNQ_FLG_CHK_CPU_BIND;
+	esdp->run_queue->flags &= ~ERTS_RUNQ_FLG_CHK_CPU_BIND;
 #endif
-    erts_smp_runq_unlock(esdp->run_queue);
-    erts_smp_rwmtx_rwlock(&cpuinfo_rwmtx);
-    cpu_id = scheduler2cpu_map[esdp->no].bind_id;
-    if (cpu_id >= 0 && cpu_id != scheduler2cpu_map[esdp->no].bound_id) {
-	res = erts_bind_to_cpu(cpuinfo, cpu_id);
-	if (res == 0)
-	    esdp->cpu_id = scheduler2cpu_map[esdp->no].bound_id = cpu_id;
-	else {
-	    erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
-	    erts_dsprintf(dsbufp, "Scheduler %d failed to bind to cpu %d: %s\n",
-			  (int) esdp->no, cpu_id, erl_errno_id(-res));
-	    erts_send_error_to_logger_nogl(dsbufp);
-	    if (scheduler2cpu_map[esdp->no].bound_id >= 0)
-		goto unbind;
+	erts_smp_runq_unlock(esdp->run_queue);
+	erts_smp_rwmtx_rwlock(&cpuinfo_rwmtx);
+	cpu_id = scheduler2cpu_map[esdp->no].bind_id;
+	if (cpu_id >= 0 && cpu_id != scheduler2cpu_map[esdp->no].bound_id) {
+		res = erts_bind_to_cpu(cpuinfo, cpu_id);
+		if (res == 0) {
+			esdp->cpu_id = scheduler2cpu_map[esdp->no].bound_id = cpu_id;
+			proc_mem_bind(esdp->no, cpu_id);
+		} else {
+			erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
+			erts_dsprintf(dsbufp, "Scheduler %d failed to bind to cpu %d: %s\n",
+					(int) esdp->no, cpu_id, erl_errno_id(-res));
+			erts_send_error_to_logger_nogl(dsbufp);
+			if (scheduler2cpu_map[esdp->no].bound_id >= 0)
+				goto unbind;
+		}
+	} else if (cpu_id < 0) {
+		unbind:
+		/* Get rid of old binding */
+		res = erts_unbind_from_cpu(cpuinfo);
+		if (res == 0)
+			esdp->cpu_id = scheduler2cpu_map[esdp->no].bound_id = -1;
+		else if (res != -ENOTSUP) {
+			erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
+			erts_dsprintf(dsbufp, "Scheduler %d failed to unbind from cpu %d: %s\n",
+					(int) esdp->no, cpu_id, erl_errno_id(-res));
+			erts_send_error_to_logger_nogl(dsbufp);
+		}
 	}
-    }
-    else if (cpu_id < 0) {
-    unbind:
-	/* Get rid of old binding */
-	res = erts_unbind_from_cpu(cpuinfo);
-	if (res == 0)
-	    esdp->cpu_id = scheduler2cpu_map[esdp->no].bound_id = -1;
-	else if (res != -ENOTSUP) {
-	    erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
-	    erts_dsprintf(dsbufp, "Scheduler %d failed to unbind from cpu %d: %s\n",
-			  (int) esdp->no, cpu_id, erl_errno_id(-res));
-	    erts_send_error_to_logger_nogl(dsbufp);
+
+	cgcc = erts_alloc(ERTS_ALC_T_TMP,
+			(no_cpu_groups_callbacks
+					* sizeof(erts_cpu_groups_callback_call_t)));
+	cgcc_ix = 0;
+	for (cgm = cpu_groups_maps; cgm; cgm = cgm->next) {
+		for (cgcl = cgm->callback_list; cgcl; cgcl = cgcl->next) {
+			cgcc[cgcc_ix].callback = cgcl->callback;
+			cgcc[cgcc_ix].ix = cpu_groups_lookup(cgm, esdp);
+			cgcc[cgcc_ix].arg = cgcl->arg;
+			cgcc_ix++;
+		}
 	}
-    }
 
-    cgcc = erts_alloc(ERTS_ALC_T_TMP,
-		      (no_cpu_groups_callbacks
-		       * sizeof(erts_cpu_groups_callback_call_t)));
-    cgcc_ix = 0;
-    for (cgm = cpu_groups_maps; cgm; cgm = cgm->next) {
-	for (cgcl = cgm->callback_list; cgcl; cgcl = cgcl->next) {
-	    cgcc[cgcc_ix].callback = cgcl->callback;
-	    cgcc[cgcc_ix].ix = cpu_groups_lookup(cgm, esdp);
-	    cgcc[cgcc_ix].arg = cgcl->arg;
-	    cgcc_ix++;
-	}
-    }
+	ASSERT(no_cpu_groups_callbacks == cgcc_ix);
+	erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
 
-    ASSERT(no_cpu_groups_callbacks == cgcc_ix);
-    erts_smp_rwmtx_rwunlock(&cpuinfo_rwmtx);
+	for (cgcc_ix = 0; cgcc_ix < no_cpu_groups_callbacks; cgcc_ix++)
+		cgcc[cgcc_ix].callback(0,
+				esdp,
+				cgcc[cgcc_ix].ix,
+				cgcc[cgcc_ix].arg);
 
-    for (cgcc_ix = 0; cgcc_ix < no_cpu_groups_callbacks; cgcc_ix++)
-	cgcc[cgcc_ix].callback(0,
-			       esdp,
-			       cgcc[cgcc_ix].ix,
-			       cgcc[cgcc_ix].arg);
+	erts_free(ERTS_ALC_T_TMP, cgcc);
 
-    erts_free(ERTS_ALC_T_TMP, cgcc);
-
-    erts_smp_runq_lock(esdp->run_queue);
+	erts_smp_runq_lock(esdp->run_queue);
 }
 
 #ifdef ERTS_SMP
@@ -645,6 +632,13 @@ erts_init_scheduler_bind_type_string(char *how)
 	cpu_bind_order = ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD;
     else if (sys_strcmp(how, "ns") == 0)
 	cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
+    else if (sys_strcmp(how, "nsdf") == 0) {
+    	cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
+    	proc_mem_initialize(1, 0);
+    } else if (sys_strcmp(how, "nsdfv") == 0) {
+    	cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
+    	proc_mem_initialize(1, 1);
+    }
     else
 	return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE;
     return ERTS_INIT_SCHED_BIND_TYPE_SUCCESS;
@@ -692,14 +686,16 @@ bound_schedulers_term(ErtsCpuBindOrder order)
     }
 }
 
-Eterm
-erts_bound_schedulers_term(Process *c_p)
-{
-    ErtsCpuBindOrder order;
-    erts_smp_rwmtx_rlock(&cpuinfo_rwmtx);
-    order = cpu_bind_order;
-    erts_smp_rwmtx_runlock(&cpuinfo_rwmtx);
-    return bound_schedulers_term(order);
+ErtsCpuBindOrder erts_bound_schedulers_order (void) {
+	ErtsCpuBindOrder order;
+	erts_smp_rwmtx_rlock(&cpuinfo_rwmtx);
+	order = cpu_bind_order;
+	erts_smp_rwmtx_runlock(&cpuinfo_rwmtx);
+	return order;
+}
+
+Eterm erts_bound_schedulers_term(Process *c_p) {
+	return bound_schedulers_term(erts_bound_schedulers_order());
 }
 
 Eterm

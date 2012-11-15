@@ -55,6 +55,8 @@
 #define GET_ERL_AOFF_ALLOC_IMPL
 #include "erl_ao_firstfit_alloc.h"
 
+#include "erl_process_mem.h"
+
 
 #if ERTS_MAX_NO_OF_SCHEDULERS > ERTS_AU_MAX_PREF_ALLOC_INSTANCES
 #  error "Too many schedulers; cannot create that many pref alloc instances"
@@ -1263,280 +1265,250 @@ handle_au_arg(struct au_init *auip,
     }
 }
 
-static void
-handle_args(int *argc, char **argv, erts_alc_hndl_args_init_t *init)
-{
-    struct au_init *aui[] = {
-	&init->sbmbc_alloc,
-	&init->binary_alloc,
-	&init->std_alloc,
-	&init->ets_alloc,
-	&init->eheap_alloc,
-	&init->ll_alloc,
-	&init->driver_alloc,
-	&init->fix_alloc,
-	&init->sl_alloc,
-	&init->temp_alloc
-    };
-    int aui_sz = (int) sizeof(aui)/sizeof(aui[0]);
-    char *arg;
-    char *rest;
-    int i, j;
+static void handle_args(int *argc, char **argv, erts_alc_hndl_args_init_t *init) {
+	struct au_init *aui[] = { &init->sbmbc_alloc, &init->binary_alloc,
+			&init->std_alloc, &init->ets_alloc, &init->eheap_alloc, &init->ll_alloc,
+			&init->driver_alloc, &init->fix_alloc, &init->sl_alloc,
+			&init->temp_alloc };
+	int aui_sz = (int) sizeof(aui) / sizeof(aui[0]);
+	char *arg;
+	char *rest;
+	int i, j;
 
-    i = 1;
+	i = 1;
 
-    ASSERT(argc && argv && init);
+	ASSERT(argc && argv && init);
 
-    while (i < *argc) {
-	if(argv[i][0] == '-') {
-	    char *param = argv[i]+1;
-	    switch (argv[i][1]) {
-	    case 'M':
-		switch (argv[i][2]) {
-		case 'B':
-		    handle_au_arg(&init->binary_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'C':
-		    handle_au_arg(&init->sbmbc_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'D':
-		    handle_au_arg(&init->std_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'E':
-		    handle_au_arg(&init->ets_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'F':
-		    handle_au_arg(&init->fix_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'H':
-		    handle_au_arg(&init->eheap_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'L':
-		    handle_au_arg(&init->ll_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'M':
-		    if (has_prefix("amcbf", argv[i]+3)) {
+	while (i < *argc) {
+		if (argv[i][0] == '-') {
+			char *param = argv[i] + 1;
+			switch (argv[i][1]) {
+			case 'M':
+				switch (argv[i][2]) {
+				case 'B':
+					handle_au_arg(&init->binary_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'C':
+					handle_au_arg(&init->sbmbc_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'D':
+					handle_au_arg(&init->std_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'E':
+					handle_au_arg(&init->ets_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'F':
+					handle_au_arg(&init->fix_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'H':
+					handle_au_arg(&init->eheap_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'L':
+					handle_au_arg(&init->ll_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'M':
+					if (has_prefix("amcbf", argv[i] + 3)) {
 #if HAVE_ERTS_MSEG
-			init->mseg.amcbf =
+						init->mseg.amcbf =
 #endif
-			    get_kb_value(argv[i]+8, argv, &i);
-		    }
-		    else if (has_prefix("rmcbf", argv[i]+3)) {
+								get_kb_value(argv[i] + 8, argv, &i);
+					} else if (has_prefix("rmcbf", argv[i] + 3)) {
 #if HAVE_ERTS_MSEG
-			init->mseg.rmcbf =
+						init->mseg.rmcbf =
 #endif
-			    get_amount_value(argv[i]+8, argv, &i);
-		    }
-		    else if (has_prefix("mcs", argv[i]+3)) {
+								get_amount_value(argv[i] + 8, argv, &i);
+					} else if (has_prefix("mcs", argv[i] + 3)) {
 #if HAVE_ERTS_MSEG
-			init->mseg.mcs =
+						init->mseg.mcs =
 #endif
-			    get_amount_value(argv[i]+6, argv, &i);
-		    }
-		    else {
-			bad_param(param, param+2);
-		    }
-		    break;
-		case 'R':
-		    handle_au_arg(&init->driver_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'S':
-		    handle_au_arg(&init->sl_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'T':
-		    handle_au_arg(&init->temp_alloc, &argv[i][3], argv, &i);
-		    break;
-		case 'Y': { /* sys_alloc */
-		    if (has_prefix("tt", param+2)) {
-			/* set trim threshold */
-			arg = get_value(param+4, argv, &i);
-			errno = 0;
-			init->trim_threshold = (int) strtol(arg, &rest, 10);
-			if (errno != 0
-			    || rest == arg
-			    || init->trim_threshold < 0
-			    || (INT_MAX/1024) < init->trim_threshold) {
-			    bad_value(param, param+4, arg);
-			}
-			VERBOSE(DEBUG_SYSTEM,
-                                ("using trim threshold: %d\n",
-                                 init->trim_threshold));
-			init->trim_threshold *= 1024;
-		    }
-		    else if (has_prefix("tp", param+2)) {
-			/* set top pad */
-			arg = get_value(param+4, argv, &i);
-			errno = 0;
-			init->top_pad = (int) strtol(arg, &rest, 10);
-			if (errno != 0
-			    || rest == arg
-			    || init->top_pad < 0
-			    || (INT_MAX/1024) < init->top_pad) {
-			    bad_value(param, param+4, arg);
-			}
-			VERBOSE(DEBUG_SYSTEM,
-                                ("using top pad: %d\n",init->top_pad));
-			init->top_pad *= 1024;
-		    }
-		    else if (has_prefix("m", param+2)) {
-			/* Has been handled by erlexec */
-			(void) get_value(param+3, argv, &i);
-		    }
-		    else if (has_prefix("e", param+2)) {
-			arg = get_value(param+3, argv, &i);
-			if (strcmp("true", arg) != 0)
-			    bad_value(param, param+3, arg);
-		    }
-		    else
-			bad_param(param, param+2);
-		    break;
-		}
-		case 'e':
-		    switch (argv[i][3]) {
-		    case 'a': {
-			int a;
-			arg = get_value(argv[i]+4, argv, &i);
-			if (strcmp("min", arg) == 0) {
-			    for (a = 0; a < aui_sz; a++)
-				aui[a]->enable = 0;
-			}
-			else if (strcmp("max", arg) == 0) {
-			    for (a = 0; a < aui_sz; a++)
-				aui[a]->enable = 1;
-			}
-			else if (strcmp("config", arg) == 0) {
-			    init->erts_alloc_config = 1;
-			}
-			else if (strcmp("r9c", arg) == 0
-				 || strcmp("r10b", arg) == 0
-				 || strcmp("r11b", arg) == 0) {
-			    set_default_sl_alloc_opts(&init->sl_alloc);
-			    set_default_std_alloc_opts(&init->std_alloc);
-			    set_default_ll_alloc_opts(&init->ll_alloc);
-			    set_default_temp_alloc_opts(&init->temp_alloc);
-			    set_default_eheap_alloc_opts(&init->eheap_alloc);
-			    set_default_binary_alloc_opts(&init->binary_alloc);
-			    set_default_ets_alloc_opts(&init->ets_alloc);
-			    set_default_driver_alloc_opts(&init->driver_alloc);
-			    set_default_driver_alloc_opts(&init->fix_alloc);
-
-			    init->driver_alloc.enable = 0;
-			    if (strcmp("r9c", arg) == 0) {
-				init->sl_alloc.enable = 0;
-				init->std_alloc.enable = 0;
-				init->binary_alloc.enable = 0;
-				init->ets_alloc.enable = 0;
-			    }
-
-			    for (a = 0; a < aui_sz; a++) {
-				aui[a]->thr_spec = 0;
-				aui[a]->init.util.ramv = 0;
-				aui[a]->init.util.mmmbc = 10;
-				aui[a]->init.util.lmbcs = 5*1024*1024;
-			    }
-			}
-			else {
-			    bad_param(param, param+3);
-			}
-			break;
-		    }
-		    default:
-			bad_param(param, param+1);
-		    }
-		    break;
-		case 'i':
-		    switch (argv[i][3]) {
-		    case 's':
-			arg = get_value(argv[i]+4, argv, &i);
-			if (strcmp("true", arg) == 0)
-			    init->instr.stat = 1;
-			else if (strcmp("false", arg) == 0)
-			    init->instr.stat = 0;
-			else
-			    bad_value(param, param+3, arg);
-			break;
-		    case 'm':
-			arg = get_value(argv[i]+4, argv, &i);
-			if (strcmp("true", arg) == 0)
-			    init->instr.map = 1;
-			else if (strcmp("false", arg) == 0)
-			    init->instr.map = 0;
-			else
-			    bad_value(param, param+3, arg);
-			break;
-		    case 't':
-			init->instr.mtrace = get_value(argv[i]+4, argv, &i);
-			break;
-		    default:
-			bad_param(param, param+2);
-		    }
-		    break;
-		case 'u':
-		    if (has_prefix("ycs", argv[i]+3)) {
-			init->alloc_util.ycs
-			    = get_kb_value(argv[i]+6, argv, &i);
-		    }
-		    else if (has_prefix("mmc", argv[i]+3)) {
-			init->alloc_util.mmc
-			    = get_amount_value(argv[i]+6, argv, &i);
-		    }
-		    else {
-			int a;
-			int start = i;
-			char *param = argv[i];
-			char *val = i+1 < *argc ? argv[i+1] : NULL;
-
-			for (a = 0; a < aui_sz; a++) {
-			    if (a > 0) {
-				ASSERT(i == start || i == start+1);
-				argv[start] = param;
-				if (i != start)
-				    argv[start + 1] = val;
-				i = start;
-			    }
-			    handle_au_arg(aui[a], &argv[i][3], argv, &i);
-			}
-		    }
-		    break;
-		default:
-		    bad_param(param, param+1);
-		}
-		break;
-	    case '-':
-		if (argv[i][2] == '\0') {
-		    /* End of system flags reached */
-		    if (init->instr.mtrace
-			/* || init->instr.stat
-			   || init->instr.map */) {
-			while (i < *argc) {
-			    if(strcmp(argv[i], "-sname") == 0
-			       || strcmp(argv[i], "-name") == 0) {
-				if (i + 1 <*argc) {
-				    init->instr.nodename = argv[i+1];
-				    break;
+								get_amount_value(argv[i] + 6, argv, &i);
+					} else {
+						bad_param(param, param + 2);
+					}
+					break;
+				case 'R':
+					handle_au_arg(&init->driver_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'S':
+					handle_au_arg(&init->sl_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'T':
+					handle_au_arg(&init->temp_alloc, &argv[i][3], argv, &i);
+					break;
+				case 'Y': { /* sys_alloc */
+					if (has_prefix("tt", param + 2)) {
+						/* set trim threshold */
+						arg = get_value(param + 4, argv, &i);
+						errno = 0;
+						init->trim_threshold = (int) strtol(arg, &rest, 10);
+						if (errno != 0 || rest == arg || init->trim_threshold < 0
+								|| (INT_MAX / 1024) < init->trim_threshold) {
+							bad_value(param, param + 4, arg);
+						} VERBOSE(DEBUG_SYSTEM,
+								("using trim threshold: %d\n",
+										init->trim_threshold));
+						init->trim_threshold *= 1024;
+					} else if (has_prefix("tp", param + 2)) {
+						/* set top pad */
+						arg = get_value(param + 4, argv, &i);
+						errno = 0;
+						init->top_pad = (int) strtol(arg, &rest, 10);
+						if (errno != 0 || rest == arg || init->top_pad < 0
+								|| (INT_MAX / 1024) < init->top_pad) {
+							bad_value(param, param + 4, arg);
+						} VERBOSE(DEBUG_SYSTEM,
+								("using top pad: %d\n",init->top_pad));
+						init->top_pad *= 1024;
+					} else if (has_prefix("m", param + 2)) {
+						/* Has been handled by erlexec */
+						(void) get_value(param + 3, argv, &i);
+					} else if (has_prefix("e", param + 2)) {
+						arg = get_value(param + 3, argv, &i);
+						if (strcmp("true", arg) != 0)
+							bad_value(param, param + 3, arg);
+					} else
+						bad_param(param, param + 2);
+					break;
 				}
-			    }
-			    i++;
-			}
-		    }
-		    goto args_parsed;
-		}
-		break;
-	    default:
-		break;
-	    }
-	}
-	i++;
-    }
+				case 'e':
+					switch (argv[i][3]) {
+					case 'a': {
+						int a;
+						arg = get_value(argv[i] + 4, argv, &i);
+						if (strcmp("min", arg) == 0) {
+							for (a = 0; a < aui_sz; a++)
+								aui[a]->enable = 0;
+						} else if (strcmp("max", arg) == 0) {
+							for (a = 0; a < aui_sz; a++)
+								aui[a]->enable = 1;
+						} else if (strcmp("config", arg) == 0) {
+							init->erts_alloc_config = 1;
+						} else if (strcmp("r9c", arg) == 0
+								|| strcmp("r10b", arg) == 0
+								|| strcmp("r11b", arg) == 0) {
+							set_default_sl_alloc_opts(&init->sl_alloc);
+							set_default_std_alloc_opts(&init->std_alloc);
+							set_default_ll_alloc_opts(&init->ll_alloc);
+							set_default_temp_alloc_opts(&init->temp_alloc);
+							set_default_eheap_alloc_opts(&init->eheap_alloc);
+							set_default_binary_alloc_opts(&init->binary_alloc);
+							set_default_ets_alloc_opts(&init->ets_alloc);
+							set_default_driver_alloc_opts(&init->driver_alloc);
+							set_default_driver_alloc_opts(&init->fix_alloc);
 
- args_parsed:
-    /* Handled arguments have been marked with NULL. Slide arguments
-       not handled towards the beginning of argv. */
-    for (i = 0, j = 0; i < *argc; i++) {
-	if (argv[i])
-	    argv[j++] = argv[i];
-    }
-    *argc = j;
+							init->driver_alloc.enable = 0;
+							if (strcmp("r9c", arg) == 0) {
+								init->sl_alloc.enable = 0;
+								init->std_alloc.enable = 0;
+								init->binary_alloc.enable = 0;
+								init->ets_alloc.enable = 0;
+							}
+
+							for (a = 0; a < aui_sz; a++) {
+								aui[a]->thr_spec = 0;
+								aui[a]->init.util.ramv = 0;
+								aui[a]->init.util.mmmbc = 10;
+								aui[a]->init.util.lmbcs = 5 * 1024 * 1024;
+							}
+						} else {
+							bad_param(param, param + 3);
+						}
+						break;
+					}
+					default:
+						bad_param(param, param + 1);
+					}
+					break;
+					case 'i':
+						switch (argv[i][3]) {
+						case 's':
+							arg = get_value(argv[i] + 4, argv, &i);
+							if (strcmp("true", arg) == 0)
+								init->instr.stat = 1;
+							else if (strcmp("false", arg) == 0)
+								init->instr.stat = 0;
+							else
+								bad_value(param, param + 3, arg);
+							break;
+						case 'm':
+							arg = get_value(argv[i] + 4, argv, &i);
+							if (strcmp("true", arg) == 0)
+								init->instr.map = 1;
+							else if (strcmp("false", arg) == 0)
+								init->instr.map = 0;
+							else
+								bad_value(param, param + 3, arg);
+							break;
+						case 't':
+							init->instr.mtrace = get_value(argv[i] + 4, argv, &i);
+							break;
+						default:
+							bad_param(param, param + 2);
+						}
+						break;
+						case 'u':
+							if (has_prefix("ycs", argv[i] + 3)) {
+								init->alloc_util.ycs = get_kb_value(argv[i] + 6, argv, &i);
+							} else if (has_prefix("mmc", argv[i] + 3)) {
+								init->alloc_util.mmc = get_amount_value(argv[i] + 6, argv,
+										&i);
+							} else {
+								int a;
+								int start = i;
+								char *param = argv[i];
+								char *val = i + 1 < *argc ? argv[i + 1] : NULL;
+
+								for (a = 0; a < aui_sz; a++) {
+									if (a > 0) {
+										ASSERT(i == start || i == start+1);
+										argv[start] = param;
+										if (i != start)
+											argv[start + 1] = val;
+										i = start;
+									}
+									handle_au_arg(aui[a], &argv[i][3], argv, &i);
+								}
+							}
+							break;
+						default:
+							bad_param(param, param + 1);
+				}
+				break;
+				case '-':
+					if (argv[i][2] == '\0') {
+						/* End of system flags reached */
+						if (init->instr.mtrace
+								/* || init->instr.stat
+				 || init->instr.map */) {
+							while (i < *argc) {
+								if (strcmp(argv[i], "-sname") == 0
+										|| strcmp(argv[i], "-name") == 0) {
+									if (i + 1 < *argc) {
+										init->instr.nodename = argv[i + 1];
+										break;
+									}
+								}
+								i++;
+							}
+						}
+						goto args_parsed;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		i++;
+	}
+
+	args_parsed:
+	/* Handled arguments have been marked with NULL. Slide arguments
+ not handled towards the beginning of argv. */
+	for (i = 0, j = 0; i < *argc; i++) {
+		if (argv[i])
+			argv[j++] = argv[i];
+	}
+	*argc = j;
 }
 
 static char *type_no_str(ErtsAlcType_t n)

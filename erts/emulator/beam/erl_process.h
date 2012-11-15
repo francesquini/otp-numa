@@ -846,6 +846,13 @@ struct process {
     Uint space_verified;        /* Avoid HAlloc forcing heap fragments when */ 
     Eterm* space_verified_from; /* we rely on available heap space (TestHeap) */
 #endif
+
+#ifdef ERTS_SMP
+    char deferred_heap_allocation;
+    int spawning_scheduler_ix;
+    int home_scheduler_ix;
+#endif
+
 };
 
 #ifdef CHECK_FOR_HOLES

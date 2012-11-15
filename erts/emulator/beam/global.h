@@ -937,6 +937,10 @@ void erts_garbage_collect_literals(Process* p, Eterm* literals,
 Uint erts_next_heap_size(Uint, Uint);
 Eterm erts_heap_sizes(Process* p);
 
+#ifdef ERTS_SMP
+void erts_relocate_heap (Process *p);
+#endif
+
 void erts_offset_off_heap(ErlOffHeap *, Sint, Eterm*, Eterm*);
 void erts_offset_heap_ptr(Eterm*, Uint, Sint, Eterm*, Eterm*);
 void erts_offset_heap(Eterm*, Uint, Sint, Eterm*, Eterm*);

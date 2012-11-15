@@ -36,6 +36,7 @@
 #include "hipe_mode_switch.h"
 #endif
 #include "dtrace-wrapper.h"
+#include "erl_process_mem.h"
 
 #define ERTS_INACT_WR_PB_LEAVE_MUCH_LIMIT 1
 #define ERTS_INACT_WR_PB_LEAVE_MUCH_PERCENTAGE 20
@@ -2012,9 +2013,35 @@ void cleanup_rootset(Rootset* rootset)
     }
 }
 
-static void
-grow_new_heap(Process *p, Uint new_sz, Eterm* objv, int nobj)
-{
+#ifdef ERTS_SMP
+void erts_relocate_heap (Process *p) {
+	Eterm* new_heap;
+	Eterm* old_heap;
+	Uint heap_size = HEAP_TOP(p) - HEAP_START(p);
+	Uint stack_size = p->hend - p->stop;
+	Sint offs;
+	char* area;
+	Uint area_size;
+	old_heap = p->heap;
+	new_heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, p->heap_sz * sizeof(Eterm));
+	memcpy(new_heap, old_heap, p->heap_sz * sizeof(Eterm));
+	offs = new_heap - HEAP_START(p);
+	area = (char *) HEAP_START(p);
+	area_size = (char *) HEAP_TOP(p) - area;
+	offset_heap(new_heap, heap_size, offs, area, area_size);
+	HIGH_WATER(p) = new_heap + (HIGH_WATER(p) - HEAP_START(p));
+	HEAP_END(p) = new_heap + p->heap_sz;
+	p->stop = p->hend - stack_size;
+	offset_rootset(p, offs, area, area_size, p->arg_reg, p->arity);
+	HEAP_TOP(p) = new_heap + heap_size;
+	HEAP_START(p) = new_heap;
+	ERTS_HEAP_FREE(ERTS_ALC_T_HEAP, (void*) old_heap, heap_size);
+	proc_mem_log("Relocating heap. Spawning: %d Home: %d Running @: %d\n",
+				p->spawning_scheduler_ix, p->home_scheduler_ix, sched_getcpu());
+}
+#endif
+
+static void grow_new_heap(Process *p, Uint new_sz, Eterm* objv, int nobj) {
     Eterm* new_heap;
     Uint heap_size = HEAP_TOP(p) - HEAP_START(p);
     Uint stack_size = p->hend - p->stop;
@@ -2372,9 +2399,7 @@ sweep_off_heap(Process *p, int fullsweep)
  * Offset pointers into the heap (not stack).
  */
 
-static void 
-offset_heap(Eterm* hp, Uint sz, Sint offs, char* area, Uint area_size)
-{
+static void offset_heap(Eterm* hp, Uint sz, Sint offs, char* area, Uint area_size) {
     while (sz--) {
 	Eterm val = *hp;
 	switch (primary_tag(val)) {

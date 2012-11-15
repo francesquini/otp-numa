@@ -43,6 +43,8 @@
 #include "erl_async.h"
 #include "dtrace-wrapper.h"
 #include "erl_process_sched.h"
+#include "erl_process_mem.h"
+#include <string.h>
 
 #define ERTS_PROC_MIN_CONTEXT_SWITCH_REDS_COST (CONTEXT_REDS/10)
 
@@ -6020,6 +6022,7 @@ ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, schedulin
 		 */
 		ASSERT(sd->rpq->first); /* Wrong qmask in sd->rq->flags? */
 		p = sd->rpq->first;
+
 #ifdef ERTS_SMP
 		ERTS_SMP_LC_ASSERT(sd->rq == p->run_queue);
 #endif
@@ -6051,8 +6054,22 @@ ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, schedulin
 		sd->rq->procs.context_switches++;
 
 		sd->esdp->current_process = p;
-
 #ifdef ERTS_SMP
+
+		if (p->deferred_heap_allocation) {
+			//First time this process is scheduled.
+			//We should copy the heap to the local NUMA node
+			if (sd->rq->ix != p->home_scheduler_ix) {
+				proc_mem_log("Home scheduler isn't the same as the first scheduler, updating home\n");
+				p->home_scheduler_ix = sd->rq->ix;
+			}
+
+			if (p->home_scheduler_ix != p->spawning_scheduler_ix) {
+				erts_relocate_heap(p);
+			}
+			p->deferred_heap_allocation = 0;
+		}
+
 		p->runq_flags |= ERTS_PROC_RUNQ_FLG_RUNNING;
 		erts_smp_runq_unlock(sd->rq);
 
@@ -6392,400 +6409,403 @@ erts_free_proc(Process *p)
 /*
 ** Allocate process and find out where to place next process.
 */
-static Process*
-alloc_process(void)
-{
+static Process* alloc_process(void) {
 #ifdef ERTS_SMP
-    erts_pix_lock_t *pix_lock;
+	erts_pix_lock_t *pix_lock;
 #endif
-    Process* p;
-    int p_prev;
+	Process* p;
+	int p_prev;
 
-    erts_smp_mtx_lock(&proc_tab_mtx);
+	erts_smp_mtx_lock(&proc_tab_mtx);
 
-    if (p_next == -1) {
-	p = NULL;
-	goto error; /* Process table full! */
-    }
+	if (p_next == -1) {
+		p = NULL;
+		goto error; /* Process table full! */
+	}
 
-    p = (Process*) erts_alloc_fnf(ERTS_ALC_T_PROC, sizeof(Process));
-    if (!p)
-	goto error; /* ENOMEM */ 
+	p = (Process*) erts_alloc_fnf(ERTS_ALC_T_PROC, sizeof(Process));
+	if (!p)
+		goto error; /* ENOMEM */
 
-    p_last = p_next;
+	p_last = p_next;
 
-    erts_get_emu_time(&p->started);
+	erts_get_emu_time(&p->started);
 
 #ifdef ERTS_SMP
-    pix_lock = ERTS_PIX2PIXLOCK(p_next);
-    erts_pix_lock(pix_lock);
+	pix_lock = ERTS_PIX2PIXLOCK(p_next);
+	erts_pix_lock(pix_lock);
 #endif
-    ASSERT(!process_tab[p_next]);
+	ASSERT(!process_tab[p_next]);
 
-    process_tab[p_next] = p;
-    erts_smp_atomic32_inc_nob(&process_count);
-    p->id = make_internal_pid(p_serial << p_serial_shift | p_next);
-    if (p->id == ERTS_INVALID_PID) {
-	/* Do not use the invalid pid; change serial */
-	p_serial++;
-	p_serial &= p_serial_mask;
+	process_tab[p_next] = p;
+	erts_smp_atomic32_inc_nob(&process_count);
 	p->id = make_internal_pid(p_serial << p_serial_shift | p_next);
-	ASSERT(p->id != ERTS_INVALID_PID);
-    }
-    ASSERT(internal_pid_serial(p->id) <= (erts_use_r9_pids_ports
-					  ? ERTS_MAX_PID_R9_SERIAL
-					  : ERTS_MAX_PID_SERIAL));
+	if (p->id == ERTS_INVALID_PID) {
+		/* Do not use the invalid pid; change serial */
+		p_serial++;
+		p_serial &= p_serial_mask;
+		p->id = make_internal_pid(p_serial << p_serial_shift | p_next);
+		ASSERT(p->id != ERTS_INVALID_PID);
+	}
+	ASSERT(internal_pid_serial(p->id) <= (erts_use_r9_pids_ports
+			? ERTS_MAX_PID_R9_SERIAL
+					: ERTS_MAX_PID_SERIAL));
 
 #ifdef ERTS_SMP
-    erts_proc_lock_init(p); /* All locks locked */
-    erts_pix_unlock(pix_lock);
+	erts_proc_lock_init(p); /* All locks locked */
+	erts_pix_unlock(pix_lock);
 #endif
 
-    p->rstatus = P_FREE;
-    p->rcount = 0;
+	p->rstatus = P_FREE;
+	p->rcount = 0;
 
-    /*
-     * set p_next to the next available slot
-     */
+	/*
+	 * set p_next to the next available slot
+	 */
 
-    p_prev = p_next;
+	p_prev = p_next;
 
-    while (1) {
-	p_next++;
-	if(p_next >= erts_max_processes) {
-	    p_serial++;
-	    p_serial &= p_serial_mask;
-	    p_next = 0;
+	while (1) {
+		p_next++;
+		if(p_next >= erts_max_processes) {
+			p_serial++;
+			p_serial &= p_serial_mask;
+			p_next = 0;
+		}
+
+		if (p_prev == p_next) {
+			p_next = -1;
+			break; /* Table full! */
+		}
+
+		if (!process_tab[p_next])
+			break; /* found a free slot */
 	}
 
-	if (p_prev == p_next) {
-	    p_next = -1;
-	    break; /* Table full! */
-	}
+	error:
 
-	if (!process_tab[p_next])
-	    break; /* found a free slot */
-    }
+	erts_smp_mtx_unlock(&proc_tab_mtx);
 
- error:
-
-    erts_smp_mtx_unlock(&proc_tab_mtx);
-
-    return p;
+	return p;
 
 }
 
-Eterm
-erl_create_process(Process* parent, /* Parent of process (default group leader). */
-		   Eterm mod,	/* Tagged atom for module. */
-		   Eterm func,	/* Tagged atom for function. */
-		   Eterm args,	/* Arguments for function (must be well-formed list). */
-		   ErlSpawnOpts* so) /* Options for spawn. */
-{
-    ErtsRunQueue *rq, *notify_runq;
-    Process *p;
-    Sint arity;			/* Number of arguments. */
-    Uint arg_size;		/* Size of arguments. */
-    Uint sz;			/* Needed words on heap. */
-    Uint heap_need;		/* Size needed on heap. */
-    Eterm res = THE_NON_VALUE;
+Eterm erl_create_process(Process* parent, /* Parent of process (default group leader). */
+		Eterm mod,	/* Tagged atom for module. */
+		Eterm func,	/* Tagged atom for function. */
+		Eterm args,	/* Arguments for function (must be well-formed list). */
+		ErlSpawnOpts* so) /* Options for spawn. */ {
 
+	ErtsRunQueue *rq, *notify_runq;
+	Process *p;
+	Sint arity;			/* Number of arguments. */
+	Uint arg_size;		/* Size of arguments. */
+	Uint sz;			/* Needed words on heap. */
+	Uint heap_need;		/* Size needed on heap. */
+	Eterm res = THE_NON_VALUE;
 
 #ifdef ERTS_SMP
-    erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+	erts_smp_proc_lock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 #endif
 
-    /*
-     * Check for errors.
-     */
+	/*
+	 * Check for errors.
+	 */
 
-    if (is_not_atom(mod) || is_not_atom(func) || ((arity = list_length(args)) < 0)) {
-	so->error_code = BADARG;
-	goto error;
-    }
-    p = alloc_process(); /* All proc locks are locked by this thread
+	if (is_not_atom(mod) || is_not_atom(func) || ((arity = list_length(args)) < 0)) {
+		so->error_code = BADARG;
+		goto error;
+	}
+	p = alloc_process(); /* All proc locks are locked by this thread
 			    on success */
-    if (!p) {
-	erts_send_error_to_logger_str(parent->group_leader,
-				      "Too many processes\n");
-	so->error_code = SYSTEM_LIMIT;
-	goto error;
-    }
+	if (!p) {
+		erts_send_error_to_logger_str(parent->group_leader,
+				"Too many processes\n");
+		so->error_code = SYSTEM_LIMIT;
+		goto error;
+	}
 
 #ifdef BM_COUNTERS
-    processes_busy++;
+	processes_busy++;
 #endif
-    BM_COUNT(processes_spawned);
+	BM_COUNT(processes_spawned);
 
-    BM_SWAP_TIMER(system,size);
-    arg_size = size_object(args);
-    BM_SWAP_TIMER(size,system);
-    heap_need = arg_size;
+	BM_SWAP_TIMER(system,size);
+	arg_size = size_object(args);
+	BM_SWAP_TIMER(size,system);
+	heap_need = arg_size;
 
-    p->flags = erts_default_process_flags;
+	p->flags = erts_default_process_flags;
 
-    /* Scheduler queue mutex should be locked when changeing
-     * prio. In this case we don't have to lock it, since
-     * noone except us has access to the process.
-     */
-    if (so->flags & SPO_USE_ARGS) {
-	p->min_heap_size  = so->min_heap_size;
-	p->min_vheap_size = so->min_vheap_size;
-	p->prio           = so->priority;
-	p->max_gen_gcs    = so->max_gen_gcs;
-    } else {
-	p->min_heap_size  = H_MIN_SIZE;
-	p->min_vheap_size = BIN_VH_MIN_SIZE;
-	p->prio           = PRIORITY_NORMAL;
-	p->max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-    }
-    p->skipped = 0;
-    ASSERT(p->min_heap_size == erts_next_heap_size(p->min_heap_size, 0));
-    
-    p->initial[INITIAL_MOD] = mod;
-    p->initial[INITIAL_FUN] = func;
-    p->initial[INITIAL_ARI] = (Uint) arity;
+	/* Scheduler queue mutex should be locked when changeing
+	 * prio. In this case we don't have to lock it, since
+	 * noone except us has access to the process.
+	 */
+	if (so->flags & SPO_USE_ARGS) {
+		p->min_heap_size  = so->min_heap_size;
+		p->min_vheap_size = so->min_vheap_size;
+		p->prio           = so->priority;
+		p->max_gen_gcs    = so->max_gen_gcs;
+	} else {
+		p->min_heap_size  = H_MIN_SIZE;
+		p->min_vheap_size = BIN_VH_MIN_SIZE;
+		p->prio           = PRIORITY_NORMAL;
+		p->max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
+	}
+	p->skipped = 0;
+	ASSERT(p->min_heap_size == erts_next_heap_size(p->min_heap_size, 0));
 
-    /*
-     * Must initialize binary lists here before copying binaries to process.
-     */
-    p->off_heap.first = NULL;
-    p->off_heap.overhead = 0;
+	p->initial[INITIAL_MOD] = mod;
+	p->initial[INITIAL_FUN] = func;
+	p->initial[INITIAL_ARI] = (Uint) arity;
 
-    heap_need +=
-	IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader);
+	/*
+	 * Must initialize binary lists here before copying binaries to process.
+	 */
+	p->off_heap.first = NULL;
+	p->off_heap.overhead = 0;
 
-    if (heap_need < p->min_heap_size) {
-	sz = heap_need = p->min_heap_size;
-    } else {
-	sz = erts_next_heap_size(heap_need, 0);
-    }
+	heap_need +=
+			IS_CONST(parent->group_leader) ? 0 : NC_HEAP_SIZE(parent->group_leader);
+
+	if (heap_need < p->min_heap_size) {
+		sz = heap_need = p->min_heap_size;
+	} else {
+		sz = erts_next_heap_size(heap_need, 0);
+	}
 
 #ifdef HIPE
-    hipe_init_process(&p->hipe);
+	hipe_init_process(&p->hipe);
 #ifdef ERTS_SMP
-    hipe_init_process_smp(&p->hipe_smp);
+	hipe_init_process_smp(&p->hipe_smp);
 #endif
 #endif
 
-    p->heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*sz);
-    p->old_hend = p->old_htop = p->old_heap = NULL;
-    p->high_water = p->heap;
-    p->gen_gcs = 0;
-    p->stop = p->hend = p->heap + sz;
-    p->htop = p->heap;
-    p->heap_sz = sz;
-    p->catches = 0;
+#ifdef ERTS_SMP
+	p->spawning_scheduler_ix = erts_get_runq_proc(parent)->ix;
+	p->deferred_heap_allocation = proc_mem_deffered;
+	proc_mem_log("Spawn. Home: %d Running @: %d\n", p->spawning_scheduler_ix, sched_getcpu());
+#endif
 
-    p->bin_vheap_sz     = p->min_vheap_size;
-    p->bin_old_vheap_sz = p->min_vheap_size;
-    p->bin_old_vheap    = 0;
-    p->bin_vheap_mature = 0;
+	p->heap = (Eterm *) ERTS_HEAP_ALLOC(ERTS_ALC_T_HEAP, sizeof(Eterm)*sz);
+	p->old_hend = p->old_htop = p->old_heap = NULL;
+	p->high_water = p->heap;
+	p->gen_gcs = 0;
+	p->stop = p->hend = p->heap + sz;
+	p->htop = p->heap;
+	p->heap_sz = sz;
+	p->catches = 0;
 
-    /* No need to initialize p->fcalls. */
+	p->bin_vheap_sz     = p->min_vheap_size;
+	p->bin_old_vheap_sz = p->min_vheap_size;
+	p->bin_old_vheap    = 0;
+	p->bin_vheap_mature = 0;
 
-    p->current = p->initial+INITIAL_MOD;
+	/* No need to initialize p->fcalls. */
 
-    p->i = (BeamInstr *) beam_apply;
-    p->cp = (BeamInstr *) beam_apply+1;
+	p->current = p->initial+INITIAL_MOD;
 
-    p->arg_reg = p->def_arg_reg;
-    p->max_arg_reg = sizeof(p->def_arg_reg)/sizeof(p->def_arg_reg[0]);
-    p->arg_reg[0] = mod;
-    p->arg_reg[1] = func;
-    BM_STOP_TIMER(system);
-    BM_MESSAGE(args,p,parent);
-    BM_START_TIMER(system);
-    BM_SWAP_TIMER(system,copy);
-    p->arg_reg[2] = copy_struct(args, arg_size, &p->htop, &p->off_heap);
-    BM_MESSAGE_COPIED(arg_size);
-    BM_SWAP_TIMER(copy,system);
-    p->arity = 3;
+	p->i = (BeamInstr *) beam_apply;
+	p->cp = (BeamInstr *) beam_apply+1;
 
-    p->fvalue = NIL;
-    p->freason = EXC_NULL;
-    p->ftrace = NIL;
-    p->reds = 0;
+	p->arg_reg = p->def_arg_reg;
+	p->max_arg_reg = sizeof(p->def_arg_reg)/sizeof(p->def_arg_reg[0]);
+	p->arg_reg[0] = mod;
+	p->arg_reg[1] = func;
+	BM_STOP_TIMER(system);
+	BM_MESSAGE(args,p,parent);
+	BM_START_TIMER(system);
+	BM_SWAP_TIMER(system,copy);
+	p->arg_reg[2] = copy_struct(args, arg_size, &p->htop, &p->off_heap);
+	BM_MESSAGE_COPIED(arg_size);
+	BM_SWAP_TIMER(copy,system);
+	p->arity = 3;
+
+	p->fvalue = NIL;
+	p->freason = EXC_NULL;
+	p->ftrace = NIL;
+	p->reds = 0;
 
 #ifdef ERTS_SMP
-    p->u.ptimer = NULL;
+	p->u.ptimer = NULL;
 #else
-    sys_memset(&p->u.tm, 0, sizeof(ErlTimer));
+	sys_memset(&p->u.tm, 0, sizeof(ErlTimer));
 #endif
 
-    p->reg = NULL;
-    p->nlinks = NULL;
-    p->monitors = NULL;
-    p->nodes_monitors = NULL;
-    p->suspend_monitors = NULL;
+	p->reg = NULL;
+	p->nlinks = NULL;
+	p->monitors = NULL;
+	p->nodes_monitors = NULL;
+	p->suspend_monitors = NULL;
 
-    ASSERT(is_pid(parent->group_leader));
+	ASSERT(is_pid(parent->group_leader));
 
-    if (parent->group_leader == ERTS_INVALID_PID)
-	p->group_leader = p->id;
-    else {
-	/* Needs to be done after the heap has been set up */
-	p->group_leader =
-	    IS_CONST(parent->group_leader)
-	    ? parent->group_leader
-	    : STORE_NC(&p->htop, &p->off_heap, parent->group_leader);
-    }
+	if (parent->group_leader == ERTS_INVALID_PID)
+		p->group_leader = p->id;
+	else {
+		/* Needs to be done after the heap has been set up */
+		p->group_leader =
+				IS_CONST(parent->group_leader)
+				? parent->group_leader
+						: STORE_NC(&p->htop, &p->off_heap, parent->group_leader);
+	}
 
-    erts_get_default_tracing(&p->trace_flags, &p->tracer_proc);
+	erts_get_default_tracing(&p->trace_flags, &p->tracer_proc);
 
-    p->msg.first = NULL;
-    p->msg.last = &p->msg.first;
-    p->msg.save = &p->msg.first;
-    p->msg.len = 0;
+	p->msg.first = NULL;
+	p->msg.last = &p->msg.first;
+	p->msg.save = &p->msg.first;
+	p->msg.len = 0;
 #ifdef ERTS_SMP
-    p->msg_inq.first = NULL;
-    p->msg_inq.last = &p->msg_inq.first;
-    p->msg_inq.len = 0;
-    p->bound_runq = NULL;
+	p->msg_inq.first = NULL;
+	p->msg_inq.last = &p->msg_inq.first;
+	p->msg_inq.len = 0;
+	p->bound_runq = NULL;
 #endif
-    p->bif_timers = NULL;
-    p->mbuf = NULL;
-    p->mbuf_sz = 0;
-    p->psd = NULL;
-    p->dictionary = NULL;
-    p->seq_trace_lastcnt = 0;
-    p->seq_trace_clock = 0;
-    SEQ_TRACE_TOKEN(p) = NIL;
+	p->bif_timers = NULL;
+	p->mbuf = NULL;
+	p->mbuf_sz = 0;
+	p->psd = NULL;
+	p->dictionary = NULL;
+	p->seq_trace_lastcnt = 0;
+	p->seq_trace_clock = 0;
+	SEQ_TRACE_TOKEN(p) = NIL;
 #ifdef USE_VM_PROBES
-    DT_UTAG(p) = NIL;
-    DT_UTAG_FLAGS(p) = 0;
+	DT_UTAG(p) = NIL;
+	DT_UTAG_FLAGS(p) = 0;
 #endif
-    p->parent = parent->id == ERTS_INVALID_PID ? NIL : parent->id;
+	p->parent = parent->id == ERTS_INVALID_PID ? NIL : parent->id;
 
-    INIT_HOLE_CHECK(p);
+	INIT_HOLE_CHECK(p);
 #ifdef DEBUG
-    p->last_old_htop = NULL;
-#endif
-
-    if (IS_TRACED(parent)) {
-	if (parent->trace_flags & F_TRACE_SOS) {
-	    p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
-	    p->tracer_proc = parent->tracer_proc;
-	}
-	if (ARE_TRACE_FLAGS_ON(parent, F_TRACE_PROCS)) {
-	    trace_proc_spawn(parent, p->id, mod, func, args);
-	}
-	if (parent->trace_flags & F_TRACE_SOS1) { /* Overrides TRACE_CHILDREN */
-	    p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
-	    p->tracer_proc = parent->tracer_proc;
-	    p->trace_flags &= ~(F_TRACE_SOS1 | F_TRACE_SOS);
-	    parent->trace_flags &= ~(F_TRACE_SOS1 | F_TRACE_SOS);
-	}
-    }
-
-    /*
-     * Check if this process should be initially linked to its parent.
-     */
-
-    if (so->flags & SPO_LINK) {
-#ifdef DEBUG
-	int ret;
-#endif
-	if (IS_TRACED_FL(parent, F_TRACE_PROCS)) {
-	    trace_proc(parent, parent, am_link, p->id);
-	}
-
-#ifdef DEBUG
-	ret = erts_add_link(&(parent->nlinks),  LINK_PID, p->id);
-	ASSERT(ret == 0);
-	ret = erts_add_link(&(p->nlinks), LINK_PID, parent->id);
-	ASSERT(ret == 0);
-#else	
-	erts_add_link(&(parent->nlinks), LINK_PID, p->id);
-	erts_add_link(&(p->nlinks), LINK_PID, parent->id);
+	p->last_old_htop = NULL;
 #endif
 
 	if (IS_TRACED(parent)) {
-	    if (parent->trace_flags & (F_TRACE_SOL|F_TRACE_SOL1))  {
-		p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
-		p->tracer_proc = parent->tracer_proc;    /* maybe steal */
-
-		if (parent->trace_flags & F_TRACE_SOL1)  { /* maybe override */
-		    p ->trace_flags &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
-		    parent->trace_flags &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
+		if (parent->trace_flags & F_TRACE_SOS) {
+			p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
+			p->tracer_proc = parent->tracer_proc;
 		}
-	    }
+		if (ARE_TRACE_FLAGS_ON(parent, F_TRACE_PROCS)) {
+			trace_proc_spawn(parent, p->id, mod, func, args);
+		}
+		if (parent->trace_flags & F_TRACE_SOS1) { /* Overrides TRACE_CHILDREN */
+			p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
+			p->tracer_proc = parent->tracer_proc;
+			p->trace_flags &= ~(F_TRACE_SOS1 | F_TRACE_SOS);
+			parent->trace_flags &= ~(F_TRACE_SOS1 | F_TRACE_SOS);
+		}
 	}
-    }
 
-    /*
-     * Test whether this process should be initially monitored by its parent.
-     */
-    if (so->flags & SPO_MONITOR) {
-	Eterm mref;
+	/*
+	 * Check if this process should be initially linked to its parent.
+	 */
 
-	mref = erts_make_ref(parent);
-	erts_add_monitor(&(parent->monitors), MON_ORIGIN, mref, p->id, NIL);
-	erts_add_monitor(&(p->monitors), MON_TARGET, mref, parent->id, NIL);
-	so->mref = mref;
-    }
+	if (so->flags & SPO_LINK) {
+#ifdef DEBUG
+		int ret;
+#endif
+		if (IS_TRACED_FL(parent, F_TRACE_PROCS)) {
+			trace_proc(parent, parent, am_link, p->id);
+		}
+
+#ifdef DEBUG
+		ret = erts_add_link(&(parent->nlinks),  LINK_PID, p->id);
+		ASSERT(ret == 0);
+		ret = erts_add_link(&(p->nlinks), LINK_PID, parent->id);
+		ASSERT(ret == 0);
+#else	
+		erts_add_link(&(parent->nlinks), LINK_PID, p->id);
+		erts_add_link(&(p->nlinks), LINK_PID, parent->id);
+#endif
+
+		if (IS_TRACED(parent)) {
+			if (parent->trace_flags & (F_TRACE_SOL|F_TRACE_SOL1))  {
+				p->trace_flags |= (parent->trace_flags & TRACEE_FLAGS);
+				p->tracer_proc = parent->tracer_proc;    /* maybe steal */
+
+				if (parent->trace_flags & F_TRACE_SOL1)  { /* maybe override */
+					p ->trace_flags &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
+					parent->trace_flags &= ~(F_TRACE_SOL1 | F_TRACE_SOL);
+				}
+			}
+		}
+	}
+
+	/*
+	 * Test whether this process should be initially monitored by its parent.
+	 */
+	if (so->flags & SPO_MONITOR) {
+		Eterm mref;
+
+		mref = erts_make_ref(parent);
+		erts_add_monitor(&(parent->monitors), MON_ORIGIN, mref, p->id, NIL);
+		erts_add_monitor(&(p->monitors), MON_TARGET, mref, parent->id, NIL);
+		so->mref = mref;
+	}
 
 #ifdef ERTS_SMP
-    p->scheduler_data = NULL;
-    p->is_exiting = 0;
-    p->status_flags = 0;
-    p->runq_flags = 0;
-    p->suspendee = NIL;
-    p->pending_suspenders = NULL;
-    p->pending_exit.reason = THE_NON_VALUE;
-    p->pending_exit.bp = NULL;
+	p->scheduler_data = NULL;
+	p->is_exiting = 0;
+	p->status_flags = 0;
+	p->runq_flags = 0;
+	p->suspendee = NIL;
+	p->pending_suspenders = NULL;
+	p->pending_exit.reason = THE_NON_VALUE;
+	p->pending_exit.bp = NULL;
 #endif
 
 #if !defined(NO_FPE_SIGNALS) || defined(HIPE)
-    p->fp_exception = 0;
+	p->fp_exception = 0;
 #endif
 
-    /*
-     * Schedule process for execution.
-     */
+	/*
+	 * Schedule process for execution.
+	 */
 
-    if (!((so->flags & SPO_USE_ARGS) && so->scheduler))
-    	rq = proc_sched_initial_placement(parent);
-    else {
-    	int ix = so->scheduler-1;
+	if (!((so->flags & SPO_USE_ARGS) && so->scheduler))
+		rq = proc_sched_initial_placement(parent);
+	else {
+		int ix = so->scheduler-1;
 		ASSERT(0 <= ix && ix < erts_no_run_queues);
 		rq = ERTS_RUNQ_IX(ix);
 		p->bound_runq = rq;
-    }
+	}
 
-    erts_smp_runq_lock(rq);
+	erts_smp_runq_lock(rq);
 
 #ifdef ERTS_SMP
-    p->run_queue = rq;
+	p->run_queue = rq;
+	p->home_scheduler_ix = rq->ix;
 #endif
 
-    p->status = P_WAITING;
-    notify_runq = internal_add_to_runq(rq, p);
+	p->status = P_WAITING;
+	notify_runq = internal_add_to_runq(rq, p);
 
-    erts_smp_runq_unlock(rq);
+	erts_smp_runq_unlock(rq);
 
-    smp_notify_inc_runq(notify_runq);
+	smp_notify_inc_runq(notify_runq);
 
-    res = p->id;
-    erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
+	res = p->id;
+	erts_smp_proc_unlock(p, ERTS_PROC_LOCKS_ALL);
 
-    VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->id));
+	VERBOSE(DEBUG_PROCESSES, ("Created a new process: %T\n",p->id));
 
 #ifdef USE_VM_PROBES
-    if (DTRACE_ENABLED(process_spawn)) {
-        DTRACE_CHARBUF(process_name, DTRACE_TERM_BUF_SIZE);
-        DTRACE_CHARBUF(mfa, DTRACE_TERM_BUF_SIZE);
+	if (DTRACE_ENABLED(process_spawn)) {
+		DTRACE_CHARBUF(process_name, DTRACE_TERM_BUF_SIZE);
+		DTRACE_CHARBUF(mfa, DTRACE_TERM_BUF_SIZE);
 
-        dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
-        DTRACE2(process_spawn, process_name, mfa);
-    }
+		dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
+		DTRACE2(process_spawn, process_name, mfa);
+	}
 #endif
 
- error:
+	error:
 
-    erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
+	erts_smp_proc_unlock(parent, ERTS_PROC_LOCKS_ALL_MINOR);
 
-    return res;
+	return res;
 }
 
 /*
