@@ -6,6 +6,8 @@
 
 #include "erl_process_mem.h"
 #include "erl_cpu_topology.h"
+#include "erl_mseg.h"
+
 
 char proc_mem_deffered = 0;
 char proc_mem_verbose = 0;
@@ -53,6 +55,8 @@ void proc_mem_bind (int scheduler, int cpu) {
 			proc_mem_log("%d - Error setting NUMA memory allocation policy%d\n", cpu, errno);
 			exit(1);
 		}
+
+		erts_mseg_clear_cache();
 
 		proc_mem_log("Scheduler: %d Set to cpu: %d Running @: %d Node %u - Policy %d\n",
 				scheduler, cpu, sched_getcpu(), node, mem_policy());
