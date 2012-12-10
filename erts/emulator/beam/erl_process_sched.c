@@ -15,17 +15,30 @@ ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_mi
 ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy);
 ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
 
-/***************************
- ***************************
- * Initialization
- ***************************
- ***************************/
+/***********************************
+ ***********************************
+ * Initialization and Configuration
+ ***********************************
+ ***********************************/
+
+static byte PROC_SCHED_HUBS_ONLY;
 
 ERTS_INLINE void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online) {
+	PROC_SCHED_HUBS_ONLY = 0;
 	proc_sched_ip_initialize();
 	proc_sched_cb_initialize();
 	proc_sched_ws_initialize();
 	proc_sched_migrate_initialize(nQueues, no_schedulers, no_schedulers_online);
+}
+
+ERTS_INLINE byte proc_sched_hubs_only(void) {
+	return PROC_SCHED_HUBS_ONLY;
+}
+
+ERTS_INLINE byte proc_sched_set_hubs_only(byte bool) {
+	byte old = PROC_SCHED_HUBS_ONLY;
+	PROC_SCHED_HUBS_ONLY = bool;
+	return old;
 }
 
 /***************************
@@ -39,10 +52,10 @@ static Uint SCHEDULED_IP_CHANGEMENT;
 static byte SCHEDULED_IP_STRATEGY;
 
 static byte PROC_SCHED_CURRENT_IP_STRATEGY;
-static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[5])(Process*);
-
+static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[5])(Process*, Process*);
 
 ERTS_INLINE static void proc_sched_ip_initialize(void) {
+
 	SCHEDULED_IP_CHANGEMENT = INT_MAX;
 
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_DEFAULT] = &proc_sched_ip_default; //0
@@ -92,8 +105,8 @@ int proc_sched_get_initial_placement_strategy(void) {
 }
 
 
-ErtsRunQueue *proc_sched_initial_placement (Process* parent) {
-	return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY](parent);
+ErtsRunQueue *proc_sched_initial_placement (Process* process, Process* parent) {
+	return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY](process, parent);
 }
 
 

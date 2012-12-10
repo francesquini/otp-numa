@@ -4340,6 +4340,15 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     	else
     		goto error;
     	BIF_RET(before ? am_true : am_false);
+    } else if (ERTS_IS_ATOM_STR("scheduler_hubs_only", BIF_ARG_1)) {
+    	byte before = proc_sched_hubs_only();
+    	if (BIF_ARG_2 == am_true)
+    		proc_sched_set_hubs_only(1);
+    	else if (BIF_ARG_2 == am_false)
+    		proc_sched_set_hubs_only(0);
+    	else
+    		goto error;
+    	BIF_RET(before ? am_true : am_false);
     }
 #endif
 

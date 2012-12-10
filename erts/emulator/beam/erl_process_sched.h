@@ -9,11 +9,13 @@
 
 /****************************************************
  ****************************************************
- * Initialization
+ * Initialization and Configuration
  ****************************************************
  ****************************************************/
 
 void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online);
+byte proc_sched_hubs_only(void);
+byte proc_sched_set_hubs_only(byte bool);
 
 /****************************************************
  ****************************************************
@@ -35,7 +37,7 @@ void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str,
 
 int proc_sched_get_initial_placement_strategy(void);
 
-ErtsRunQueue* proc_sched_initial_placement (Process* proc);
+ErtsRunQueue* proc_sched_initial_placement (Process* process, Process* parent);
 
 
 /****************************************************

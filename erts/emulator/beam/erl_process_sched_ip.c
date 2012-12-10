@@ -15,7 +15,7 @@
  ***************************
  ***************************/
 
-ErtsRunQueue* proc_sched_ip_default(Process* parent) {
+ErtsRunQueue* proc_sched_ip_default(Process* process, Process* parent) {
 	return erts_get_runq_proc(parent);
 }
 
@@ -39,12 +39,16 @@ ERTS_INLINE static void proc_sched_ip_random_initialize(void) {
 }
 
 
-ErtsRunQueue* proc_sched_ip_random(Process* ign) {
+ErtsRunQueue* proc_sched_ip_random(Process* process, Process* parent) {
 	unsigned int rand, scheduler;
-	proc_sched_ip_random_initialize();
-	rand = rand_r(&proc_sched_ip_random_seed);
-	scheduler = rand % erts_no_run_queues;
-	return ERTS_RUNQ_IX(scheduler);
+	if (!proc_sched_hubs_only() || process->hub) {
+		proc_sched_ip_random_initialize();
+		rand = rand_r(&proc_sched_ip_random_seed);
+		scheduler = rand % erts_no_run_queues;
+		return ERTS_RUNQ_IX(scheduler);
+	} else {
+		return proc_sched_ip_default(process, parent);
+	}
 }
 
 
@@ -89,9 +93,13 @@ ERTS_INLINE static unsigned int simple_rng_next(unsigned int mod) {
 }
 
 
-ErtsRunQueue* proc_sched_ip_simple_random(Process* ign) {
-	simple_rng_initialize();
-	return ERTS_RUNQ_IX(simple_rng_next(erts_no_run_queues));
+ErtsRunQueue* proc_sched_ip_simple_random(Process* process, Process* parent) {
+	if (!proc_sched_hubs_only() || process->hub) {
+		simple_rng_initialize();
+		return ERTS_RUNQ_IX(simple_rng_next(erts_no_run_queues)) ;
+	} else {
+		return proc_sched_ip_default(process, parent);
+	}
 }
 
 /***************************
@@ -102,10 +110,14 @@ ErtsRunQueue* proc_sched_ip_simple_random(Process* ign) {
 
 static unsigned long long proc_sched_ip_circular_next = 0;
 
-ErtsRunQueue* proc_sched_ip_circular(Process* ign) {
-	unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
-	unsigned long long next = nextBig % erts_no_run_queues;
-	return ERTS_RUNQ_IX(next);
+ErtsRunQueue* proc_sched_ip_circular(Process* process, Process* parent) {
+	if (!proc_sched_hubs_only() || process->hub) {
+		unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
+		unsigned long long next = nextBig % erts_no_run_queues;
+		return ERTS_RUNQ_IX(next) ;
+	} else {
+		return proc_sched_ip_default(process, parent);
+	}
 }
 
 /***************************
@@ -116,7 +128,12 @@ ErtsRunQueue* proc_sched_ip_circular(Process* ign) {
 
 static __thread unsigned int local_circular_next = 0;
 
-ErtsRunQueue* proc_sched_ip_local_circular(Process* ign) {
-	local_circular_next = (local_circular_next + 1) % erts_no_run_queues;
-	return ERTS_RUNQ_IX(local_circular_next);
+ErtsRunQueue* proc_sched_ip_local_circular(Process* process, Process* parent) {
+	if (!proc_sched_hubs_only() || process->hub) {
+		local_circular_next = (local_circular_next + 1) % erts_no_run_queues;
+		return ERTS_RUNQ_IX(local_circular_next);
+	} else {
+		return proc_sched_ip_default(process, parent);
+	}
 }
+

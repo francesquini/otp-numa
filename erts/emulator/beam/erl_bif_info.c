@@ -2706,6 +2706,8 @@ BIF_RET(make_small(n));
 		BIF_RET(hub_processes_list(BIF_P));
 	} else if (ERTS_IS_ATOM_STR("hub_processes_count", BIF_ARG_1)) {
 		BIF_RET(make_small(hub_processes_count()));
+	} else if (ERTS_IS_ATOM_STR("scheduler_hubs_only", BIF_ARG_1)) {
+		BIF_RET(proc_sched_hubs_only() ? am_true : am_false);
 	}
 #endif
 	BIF_ERROR(BIF_P, BADARG);

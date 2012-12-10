@@ -6510,8 +6510,8 @@ ERTS_INLINE Uint hub_processes_count(void) {
 }
 
 ERTS_INLINE void set_hub_process(Process *p, int bool) {
-	if (p->hub && bool) return;
-	if (!p->hub && !bool) return;
+	//if you want to do p->hub == bool, think again! :-p
+	if ((p->hub && bool) || (!p->hub && !bool)) return;
 
 	erts_smp_mtx_lock(&hub_proc_tab_mtx);
 	if (bool) {
@@ -6840,7 +6840,7 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 	 */
 
 	if (!((so->flags & SPO_USE_ARGS) && so->scheduler))
-		rq = proc_sched_initial_placement(parent);
+		rq = proc_sched_initial_placement(p, parent);
 	else {
 		int ix = so->scheduler-1;
 		ASSERT(0 <= ix && ix < erts_no_run_queues);
