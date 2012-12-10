@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "erl_process_sched_ip.h"
+#include "erl_process_sched.h"
 
 /*This file contains the implementation of the initial placement strategies*/
 
