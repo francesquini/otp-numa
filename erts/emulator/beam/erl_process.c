@@ -6551,11 +6551,9 @@ ERTS_INLINE Eterm hub_processes_list(Process* p) {
 
 	size = 2 * hub_processes_cnt;
 	hp = HAlloc(p, size);
-	curr = hub_processes_tab;
-	while (curr != NULL) {
+	for (curr = hub_processes_tab; curr != NULL; curr = curr->next) {
 		res = CONS(hp, curr->p->id, res);
 		hp += 2;
-		curr = curr->next;
 	}
 
 	erts_smp_mtx_unlock(&hub_proc_tab_mtx);
