@@ -201,61 +201,49 @@ void *erts_alloc_permanent_cache_aligned(ErtsAlcType_t type, Uint size);
 
 #if ERTS_ALC_DO_INLINE || defined(ERTS_ALC_INTERNAL__)
 
-ERTS_ALC_INLINE
-void *erts_alloc(ErtsAlcType_t type, Uint size)
-{
-    void *res;
-    res = (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	size);
-    if (!res)
+ERTS_ALC_INLINE void *erts_alloc(ErtsAlcType_t type, Uint size) {
+	void *res;
+	res = (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
+			ERTS_ALC_T2N(type),
+			erts_allctrs[ERTS_ALC_T2A(type)].extra,
+			size);
+	if (!res)
 	erts_alloc_n_enomem(ERTS_ALC_T2N(type), size);
-    return res;
+	return res;
 }
 
-ERTS_ALC_INLINE
-void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
-{
-    void *res;
-    res = (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr,
-	size);
-    if (!res)
+ERTS_ALC_INLINE void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size) {
+	void *res;
+	res = (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
+			ERTS_ALC_T2N(type),
+			erts_allctrs[ERTS_ALC_T2A(type)].extra,
+			ptr,
+			size);
+	if (!res)
 	erts_realloc_n_enomem(ERTS_ALC_T2N(type), ptr, size);
-    return res;
+	return res;
 }
 
-ERTS_ALC_INLINE
-void erts_free(ErtsAlcType_t type, void *ptr)
-{
-    (*erts_allctrs[ERTS_ALC_T2A(type)].free)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr);
+ERTS_ALC_INLINE void erts_free(ErtsAlcType_t type, void *ptr) {
+	(*erts_allctrs[ERTS_ALC_T2A(type)].free)(
+			ERTS_ALC_T2N(type),
+			erts_allctrs[ERTS_ALC_T2A(type)].extra,
+			ptr);
 }
 
-
-ERTS_ALC_INLINE
-void *erts_alloc_fnf(ErtsAlcType_t type, Uint size)
-{
-    return (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	size);
+ERTS_ALC_INLINE void *erts_alloc_fnf(ErtsAlcType_t type, Uint size) {
+	return (*erts_allctrs[ERTS_ALC_T2A(type)].alloc)(
+			ERTS_ALC_T2N(type),
+			erts_allctrs[ERTS_ALC_T2A(type)].extra,
+			size);
 }
 
-
-ERTS_ALC_INLINE
-void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size)
-{
-    return (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
-	ERTS_ALC_T2N(type),
-	erts_allctrs[ERTS_ALC_T2A(type)].extra,
-	ptr,
-	size);
+ERTS_ALC_INLINE void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size) {
+	return (*erts_allctrs[ERTS_ALC_T2A(type)].realloc)(
+			ERTS_ALC_T2N(type),
+			erts_allctrs[ERTS_ALC_T2A(type)].extra,
+			ptr,
+			size);
 }
 
 #endif /* #if ERTS_ALC_DO_INLINE || defined(ERTS_ALC_INTERNAL__) */

@@ -174,6 +174,7 @@ static erts_tsd_key_t sched_data_key;
 #endif
 
 static erts_smp_mtx_t proc_tab_mtx;
+static erts_smp_mtx_t hub_proc_tab_mtx;
 
 static erts_smp_atomic32_t function_calls;
 
@@ -188,6 +189,9 @@ typedef union {
 } ErtsAlignedSchedulerSleepInfo;
 
 static ErtsAlignedSchedulerSleepInfo *aligned_sched_sleep_info;
+
+ProcessLinkedList* hub_processes_tab = NULL;
+Uint hub_processes_cnt = 0;
 
 Process**  process_tab;
 static Uint last_reductions;
@@ -381,6 +385,7 @@ erts_init_process(int ncpu)
     sys_memzero(process_tab, erts_max_processes * sizeof(Process*));
 
     erts_smp_mtx_init(&proc_tab_mtx, "proc_tab");
+    erts_smp_mtx_init(&hub_proc_tab_mtx, "hub_proc_tab");
     p_last = -1;
     p_next = 0;
     p_serial = 0;
@@ -4085,39 +4090,37 @@ erts_is_multi_scheduling_blocked(void)
     return res;
 }
 
-Eterm
-erts_multi_scheduling_blockers(Process *p)
-{
-    Eterm res = NIL;
+Eterm erts_multi_scheduling_blockers(Process *p) {
+	Eterm res = NIL;
 
-    erts_smp_mtx_lock(&schdlr_sspnd.mtx);
-    if (schdlr_sspnd.msb.procs) {
-	Eterm *hp, *hp_end;
-	ErtsProcList *plp1, *plp2;
-	Uint max_size;
-	ASSERT(schdlr_sspnd.msb.procs);
-	for (max_size = 0, plp1 = schdlr_sspnd.msb.procs;
-	     plp1;
-	     plp1 = plp1->next) {
-	    max_size += 2;
+	erts_smp_mtx_lock(&schdlr_sspnd.mtx);
+	if (schdlr_sspnd.msb.procs) {
+		Eterm *hp, *hp_end;
+		ErtsProcList *plp1, *plp2;
+		Uint max_size;
+		ASSERT(schdlr_sspnd.msb.procs);
+		for (max_size = 0, plp1 = schdlr_sspnd.msb.procs;
+				plp1;
+				plp1 = plp1->next) {
+			max_size += 2;
+		}
+		ASSERT(max_size);
+		hp = HAlloc(p, max_size);
+		hp_end = hp + max_size;
+		for (plp1 = schdlr_sspnd.msb.procs; plp1; plp1 = plp1->next) {
+			for (plp2 = schdlr_sspnd.msb.procs;
+					plp2->pid != plp1->pid;
+					plp2 = plp2->next);
+			if (plp2 == plp1) {
+				res = CONS(hp, plp1->pid, res);
+				hp += 2;
+			}
+			/* else: already in result list */
+		}
+		HRelease(p, hp_end, hp);
 	}
-	ASSERT(max_size);
-	hp = HAlloc(p, max_size);
-	hp_end = hp + max_size;
-	for (plp1 = schdlr_sspnd.msb.procs; plp1; plp1 = plp1->next) {
-	    for (plp2 = schdlr_sspnd.msb.procs;
-		 plp2->pid != plp1->pid;
-		 plp2 = plp2->next);
-	    if (plp2 == plp1) {
-		res = CONS(hp, plp1->pid, res);
-		hp += 2;
-	    }
-	    /* else: already in result list */
-	}
-	HRelease(p, hp_end, hp);
-    }
-    erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
-    return res;
+	erts_smp_mtx_unlock(&schdlr_sspnd.mtx);
+	return res;
 }
 
 static void *
@@ -6498,6 +6501,69 @@ static Process* alloc_process(void) {
 
 }
 
+ERTS_INLINE Uint hub_processes_count(void) {
+	Uint ret;
+	erts_smp_mtx_lock(&hub_proc_tab_mtx);
+	ret = hub_processes_cnt;
+	erts_smp_mtx_unlock(&hub_proc_tab_mtx);
+	return ret;
+}
+
+ERTS_INLINE void set_hub_process(Process *p, int bool) {
+	if (p->hub && bool) return;
+	if (!p->hub && !bool) return;
+
+	erts_smp_mtx_lock(&hub_proc_tab_mtx);
+	if (bool) {
+		ProcessLinkedList *new;
+		new = malloc(sizeof(ProcessLinkedList));
+		new->p = p;
+		p->hub = new;
+		if (hub_processes_tab) //first
+			hub_processes_tab->prev = new;
+		new->next = hub_processes_tab;
+		new->prev = NULL;
+		hub_processes_tab = new;
+		hub_processes_cnt++;
+	} else {
+		ProcessLinkedList *prev, *next;
+		prev = p->hub->prev;
+		next = p->hub->next;
+		if (prev)
+			prev->next = next;
+		else //first in tab
+			hub_processes_tab = next;
+		if (next) next->prev = prev;
+		free(p->hub);
+		p->hub = NULL;
+		hub_processes_cnt--;
+	}
+	erts_smp_mtx_unlock(&hub_proc_tab_mtx);
+}
+
+ERTS_INLINE Eterm hub_processes_list(Process* p) {
+	ProcessLinkedList* curr;
+	Eterm *hp;
+	Eterm res = NIL;
+	Uint size;
+
+	erts_smp_mtx_lock(&hub_proc_tab_mtx);
+
+	size = 2 * hub_processes_cnt;
+	hp = HAlloc(p, size);
+	curr = hub_processes_tab;
+	while (curr != NULL) {
+		res = CONS(hp, curr->p->id, res);
+		hp += 2;
+		curr = curr->next;
+	}
+
+	erts_smp_mtx_unlock(&hub_proc_tab_mtx);
+
+	return res;
+}
+
+
 Eterm erl_create_process(Process* parent, /* Parent of process (default group leader). */
 		Eterm mod,	/* Tagged atom for module. */
 		Eterm func,	/* Tagged atom for function. */
@@ -6753,6 +6819,10 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 	}
 
 #ifdef ERTS_SMP
+
+	p->hub = NULL;
+	set_hub_process(p, so->flags & SPO_HUB);
+
 	p->scheduler_data = NULL;
 	p->is_exiting = 0;
 	p->status_flags = 0;
@@ -7963,6 +8033,8 @@ continue_exit_process(Process *p
 				    p);
 	p->suspend_monitors = NULL;
     }
+
+    set_hub_process(p, 0);
 
     /*
      * The registered name *should* be the last "erlang resource" to

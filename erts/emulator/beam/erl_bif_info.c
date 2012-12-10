@@ -2036,677 +2036,679 @@ static Eterm build_snifs_term(Eterm **hpp, Uint *szp, Eterm res) {
     return res;
 }
 
-BIF_RETTYPE system_info_1(BIF_ALIST_1)
-{
-    Eterm res;
-    Eterm* hp;
-    Eterm val;
-    int i;
+BIF_RETTYPE system_info_1(BIF_ALIST_1) {
+	Eterm res;
+	Eterm* hp;
+	Eterm val;
+	int i;
 
-    if (is_tuple(BIF_ARG_1)) {
-	Eterm* tp = tuple_val(BIF_ARG_1);
-	Uint arity = *tp++;
-	return info_1_tuple(BIF_P, tp, arityval(arity));
-    } else if (BIF_ARG_1 == am_scheduler_id) {
+	if (is_tuple(BIF_ARG_1)) {
+		Eterm* tp = tuple_val(BIF_ARG_1);
+		Uint arity = *tp++;
+		return info_1_tuple(BIF_P, tp, arityval(arity));
+	} else if (BIF_ARG_1 == am_scheduler_id) {
 #ifdef ERTS_SMP
-	    ASSERT(BIF_P->scheduler_data);
-	    BIF_RET(make_small(BIF_P->scheduler_data->no));
+		ASSERT(BIF_P->scheduler_data);
+		BIF_RET(make_small(BIF_P->scheduler_data->no));
 #else
-	    BIF_RET(make_small(1));
+		BIF_RET(make_small(1));
 #endif
-    } else if (BIF_ARG_1 == am_compat_rel) {
-	ASSERT(erts_compat_rel > 0);
-	BIF_RET(make_small(erts_compat_rel));
-    } else if (BIF_ARG_1 == am_multi_scheduling) {
+	} else if (BIF_ARG_1 == am_compat_rel) {
+		ASSERT(erts_compat_rel > 0);
+		BIF_RET(make_small(erts_compat_rel));
+	} else if (BIF_ARG_1 == am_multi_scheduling) {
 #ifndef ERTS_SMP
-	BIF_RET(am_disabled);
+		BIF_RET(am_disabled);
 #else
-	if (erts_no_schedulers == 1)
-	    BIF_RET(am_disabled);
-	else {
-	    BIF_RET(erts_is_multi_scheduling_blocked()
-		    ? am_blocked
-		    : am_enabled);
-	}
+		if (erts_no_schedulers == 1)
+			BIF_RET(am_disabled);
+		else {
+			BIF_RET(erts_is_multi_scheduling_blocked()
+					? am_blocked
+							: am_enabled);
+		}
 #endif
-    } else if (BIF_ARG_1 == am_build_type) {
+	} else if (BIF_ARG_1 == am_build_type) {
 #if defined(DEBUG)
-	ERTS_DECL_AM(debug);
-	BIF_RET(AM_debug);
+		ERTS_DECL_AM(debug);
+		BIF_RET(AM_debug);
 #elif defined(PURIFY)
-	ERTS_DECL_AM(purify);
-	BIF_RET(AM_purify);
+		ERTS_DECL_AM(purify);
+		BIF_RET(AM_purify);
 #elif defined(QUANTIFY)
-	ERTS_DECL_AM(quantify);
-	BIF_RET(AM_quantify);
+		ERTS_DECL_AM(quantify);
+		BIF_RET(AM_quantify);
 #elif defined(PURECOV)
-	ERTS_DECL_AM(purecov);
-	BIF_RET(AM_purecov);
+		ERTS_DECL_AM(purecov);
+		BIF_RET(AM_purecov);
 #elif defined(ERTS_GCOV)
-	ERTS_DECL_AM(gcov);
-	BIF_RET(AM_gcov);
+		ERTS_DECL_AM(gcov);
+		BIF_RET(AM_gcov);
 #elif defined(VALGRIND)
-	ERTS_DECL_AM(valgrind);
-	BIF_RET(AM_valgrind);
+		ERTS_DECL_AM(valgrind);
+		BIF_RET(AM_valgrind);
 #elif defined(GPROF)
-	ERTS_DECL_AM(gprof);
-	BIF_RET(AM_gprof);
+		ERTS_DECL_AM(gprof);
+		BIF_RET(AM_gprof);
 #elif defined(ERTS_ENABLE_LOCK_COUNT)
-	ERTS_DECL_AM(lcnt);
-	BIF_RET(AM_lcnt);
+		ERTS_DECL_AM(lcnt);
+		BIF_RET(AM_lcnt);
 #else
-	BIF_RET(am_opt);
+		BIF_RET(am_opt);
 #endif
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_allocated_areas) {
-	res = erts_allocated_areas(NULL, NULL, BIF_P);
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_allocated) {
-	BIF_RET(erts_instr_get_memory_map(BIF_P));
-    } else if (BIF_ARG_1 == am_hipe_architecture) {
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_allocated_areas) {
+		res = erts_allocated_areas(NULL, NULL, BIF_P);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_allocated) {
+		BIF_RET(erts_instr_get_memory_map(BIF_P));
+	} else if (BIF_ARG_1 == am_hipe_architecture) {
 #if defined(HIPE)
-	BIF_RET(hipe_arch_name);
+		BIF_RET(hipe_arch_name);
 #else
-	BIF_RET(am_undefined);
+		BIF_RET(am_undefined);
 #endif
-    } else if (BIF_ARG_1 == am_trace_control_word) {
-	BIF_RET(db_get_trace_control_word(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("ets_realloc_moves", BIF_ARG_1)) {
- 	BIF_RET((erts_ets_realloc_always_moves) ? am_true : am_false);
-    } else if (ERTS_IS_ATOM_STR("ets_always_compress", BIF_ARG_1)) {
-	BIF_RET((erts_ets_always_compress) ? am_true : am_false);
-    } else if (ERTS_IS_ATOM_STR("snifs", BIF_ARG_1)) {
-	Uint size = 0;
-	Uint *szp;
+	} else if (BIF_ARG_1 == am_trace_control_word) {
+		BIF_RET(db_get_trace_control_word(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("ets_realloc_moves", BIF_ARG_1)) {
+		BIF_RET((erts_ets_realloc_always_moves) ? am_true : am_false);
+	} else if (ERTS_IS_ATOM_STR("ets_always_compress", BIF_ARG_1)) {
+		BIF_RET((erts_ets_always_compress) ? am_true : am_false);
+	} else if (ERTS_IS_ATOM_STR("snifs", BIF_ARG_1)) {
+		Uint size = 0;
+		Uint *szp;
 
-	szp = &size;
-	build_snifs_term(NULL, szp, NIL);
-	hp = HAlloc(BIF_P, size);
-	res = build_snifs_term(&hp, NULL, NIL);
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_sequential_tracer) {
-	val = erts_get_system_seq_tracer();
-	ASSERT(is_internal_pid(val) || is_internal_port(val) || val==am_false)
-	hp = HAlloc(BIF_P, 3);
-	res = TUPLE2(hp, am_sequential_tracer, val);
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_garbage_collection){
-	Uint val = (Uint) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-	Eterm tup;
-	hp = HAlloc(BIF_P, 3+2 + 3+2 + 3+2);
+		szp = &size;
+		build_snifs_term(NULL, szp, NIL);
+		hp = HAlloc(BIF_P, size);
+		res = build_snifs_term(&hp, NULL, NIL);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_sequential_tracer) {
+		val = erts_get_system_seq_tracer();
+		ASSERT(is_internal_pid(val) || is_internal_port(val) || val==am_false)
+		hp = HAlloc(BIF_P, 3);
+		res = TUPLE2(hp, am_sequential_tracer, val);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_garbage_collection){
+		Uint val = (Uint) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
+		Eterm tup;
+		hp = HAlloc(BIF_P, 3+2 + 3+2 + 3+2);
 
-	tup = TUPLE2(hp, am_fullsweep_after, make_small(val)); hp += 3;
-	res = CONS(hp, tup, NIL); hp += 2;
+		tup = TUPLE2(hp, am_fullsweep_after, make_small(val)); hp += 3;
+		res = CONS(hp, tup, NIL); hp += 2;
 
-	tup = TUPLE2(hp, am_min_heap_size, make_small(H_MIN_SIZE)); hp += 3;
-	res = CONS(hp, tup, res); hp += 2;
+		tup = TUPLE2(hp, am_min_heap_size, make_small(H_MIN_SIZE)); hp += 3;
+		res = CONS(hp, tup, res); hp += 2;
 
-	tup = TUPLE2(hp, am_min_bin_vheap_size, make_small(BIN_VH_MIN_SIZE)); hp += 3;
-	res = CONS(hp, tup, res); hp += 2;
+		tup = TUPLE2(hp, am_min_bin_vheap_size, make_small(BIN_VH_MIN_SIZE)); hp += 3;
+		res = CONS(hp, tup, res); hp += 2;
 
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_fullsweep_after){
-	Uint val = (Uint) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-	hp = HAlloc(BIF_P, 3);
-	res = TUPLE2(hp, am_fullsweep_after, make_small(val));
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_min_heap_size) {
-	hp = HAlloc(BIF_P, 3);
-	res = TUPLE2(hp, am_min_heap_size,make_small(H_MIN_SIZE));
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_min_bin_vheap_size) {
-	hp = HAlloc(BIF_P, 3);
-	res = TUPLE2(hp, am_min_bin_vheap_size,make_small(BIN_VH_MIN_SIZE));
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_process_count) {
-	BIF_RET(make_small(erts_process_count()));
-    } else if (BIF_ARG_1 == am_process_limit) {
-	BIF_RET(make_small(erts_max_processes));
-    } else if (BIF_ARG_1 == am_info
-	       || BIF_ARG_1 == am_procs
-	       || BIF_ARG_1 == am_loaded
-	       || BIF_ARG_1 == am_dist) {
-	erts_dsprintf_buf_t *dsbufp = erts_create_info_dsbuf(0);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_fullsweep_after){
+		Uint val = (Uint) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
+		hp = HAlloc(BIF_P, 3);
+		res = TUPLE2(hp, am_fullsweep_after, make_small(val));
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_min_heap_size) {
+		hp = HAlloc(BIF_P, 3);
+		res = TUPLE2(hp, am_min_heap_size,make_small(H_MIN_SIZE));
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_min_bin_vheap_size) {
+		hp = HAlloc(BIF_P, 3);
+		res = TUPLE2(hp, am_min_bin_vheap_size,make_small(BIN_VH_MIN_SIZE));
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_process_count) {
+		BIF_RET(make_small(erts_process_count()));
+	} else if (BIF_ARG_1 == am_process_limit) {
+		BIF_RET(make_small(erts_max_processes));
+	} else if (BIF_ARG_1 == am_info
+			|| BIF_ARG_1 == am_procs
+			|| BIF_ARG_1 == am_loaded
+			|| BIF_ARG_1 == am_dist) {
+		erts_dsprintf_buf_t *dsbufp = erts_create_info_dsbuf(0);
 
-	/* Need to be the only thread running... */
-	erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
-	erts_smp_thr_progress_block();
+		/* Need to be the only thread running... */
+		erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
+		erts_smp_thr_progress_block();
 
-	if (BIF_ARG_1 == am_info)
-	    info(ERTS_PRINT_DSBUF, (void *) dsbufp);
-	else if (BIF_ARG_1 == am_procs)
-	    process_info(ERTS_PRINT_DSBUF, (void *) dsbufp);
-	else if (BIF_ARG_1 == am_loaded)
-	    loaded(ERTS_PRINT_DSBUF, (void *) dsbufp);
-	else
-	    distribution_info(ERTS_PRINT_DSBUF, (void *) dsbufp);
+		if (BIF_ARG_1 == am_info)
+			info(ERTS_PRINT_DSBUF, (void *) dsbufp);
+		else if (BIF_ARG_1 == am_procs)
+			process_info(ERTS_PRINT_DSBUF, (void *) dsbufp);
+		else if (BIF_ARG_1 == am_loaded)
+			loaded(ERTS_PRINT_DSBUF, (void *) dsbufp);
+		else
+			distribution_info(ERTS_PRINT_DSBUF, (void *) dsbufp);
 
-	erts_smp_thr_progress_unblock();
-	erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
+		erts_smp_thr_progress_unblock();
+		erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
 
-	ASSERT(dsbufp && dsbufp->str);
-	res = new_binary(BIF_P, (byte *) dsbufp->str, dsbufp->str_len);
-	erts_destroy_info_dsbuf(dsbufp);
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("dist_ctrl", BIF_ARG_1)) {
-	DistEntry *dep;
-	i = 0;
-	/* Need to be the only thread running... */
-	erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
-	erts_smp_thr_progress_block();
-	for (dep = erts_visible_dist_entries; dep; dep = dep->next) 
-	    ++i;
-	for (dep = erts_hidden_dist_entries; dep; dep = dep->next)
-	    ++i;
-	hp = HAlloc(BIF_P,i*(3+2));
-	res = NIL;
-	for (dep = erts_hidden_dist_entries; dep; dep = dep->next) {
-	    Eterm tpl;
-	    ASSERT(is_immed(dep->cid));
-	    tpl = TUPLE2(hp, dep->sysname, dep->cid);
-	    hp +=3;
-	    res = CONS(hp, tpl, res);
-	    hp += 2;
+		ASSERT(dsbufp && dsbufp->str);
+		res = new_binary(BIF_P, (byte *) dsbufp->str, dsbufp->str_len);
+		erts_destroy_info_dsbuf(dsbufp);
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("dist_ctrl", BIF_ARG_1)) {
+		DistEntry *dep;
+		i = 0;
+		/* Need to be the only thread running... */
+		erts_smp_proc_unlock(BIF_P, ERTS_PROC_LOCK_MAIN);
+		erts_smp_thr_progress_block();
+		for (dep = erts_visible_dist_entries; dep; dep = dep->next)
+			++i;
+		for (dep = erts_hidden_dist_entries; dep; dep = dep->next)
+			++i;
+		hp = HAlloc(BIF_P,i*(3+2));
+		res = NIL;
+		for (dep = erts_hidden_dist_entries; dep; dep = dep->next) {
+			Eterm tpl;
+			ASSERT(is_immed(dep->cid));
+			tpl = TUPLE2(hp, dep->sysname, dep->cid);
+			hp +=3;
+			res = CONS(hp, tpl, res);
+			hp += 2;
+		}
+		for (dep = erts_visible_dist_entries; dep; dep = dep->next) {
+			Eterm tpl;
+			ASSERT(is_immed(dep->cid));
+			tpl = TUPLE2(hp, dep->sysname, dep->cid);
+			hp +=3;
+			res = CONS(hp, tpl, res);
+			hp += 2;
+		}
+		erts_smp_thr_progress_unblock();
+		erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_system_version) {
+		erts_dsprintf_buf_t *dsbufp = erts_create_tmp_dsbuf(0);
+		erts_print_system_version(ERTS_PRINT_DSBUF, (void *) dsbufp, BIF_P);
+		hp = HAlloc(BIF_P, dsbufp->str_len*2);
+		res = buf_to_intlist(&hp, dsbufp->str, dsbufp->str_len, NIL);
+		erts_destroy_tmp_dsbuf(dsbufp);
+		BIF_RET(res);
+	} else if (BIF_ARG_1 == am_system_architecture) {
+		hp = HAlloc(BIF_P, 2*(sizeof(ERLANG_ARCHITECTURE)-1));
+		BIF_RET(buf_to_intlist(&hp,
+				ERLANG_ARCHITECTURE,
+				sizeof(ERLANG_ARCHITECTURE)-1,
+				NIL));
 	}
-	for (dep = erts_visible_dist_entries; dep; dep = dep->next) {
-	    Eterm tpl;
-	    ASSERT(is_immed(dep->cid));
-	    tpl = TUPLE2(hp, dep->sysname, dep->cid);
-	    hp +=3;
-	    res = CONS(hp, tpl, res);
-	    hp += 2;
+	else if (BIF_ARG_1 == am_memory_types) {
+		return erts_instr_get_type_info(BIF_P);
 	}
-	erts_smp_thr_progress_unblock();
-	erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_system_version) {
-	erts_dsprintf_buf_t *dsbufp = erts_create_tmp_dsbuf(0);
-	erts_print_system_version(ERTS_PRINT_DSBUF, (void *) dsbufp, BIF_P);
-	hp = HAlloc(BIF_P, dsbufp->str_len*2);
-	res = buf_to_intlist(&hp, dsbufp->str, dsbufp->str_len, NIL);
-	erts_destroy_tmp_dsbuf(dsbufp);
-	BIF_RET(res);
-    } else if (BIF_ARG_1 == am_system_architecture) {
-	hp = HAlloc(BIF_P, 2*(sizeof(ERLANG_ARCHITECTURE)-1));
-	BIF_RET(buf_to_intlist(&hp,
-			       ERLANG_ARCHITECTURE,
-			       sizeof(ERLANG_ARCHITECTURE)-1,
-			       NIL));
-    } 
-    else if (BIF_ARG_1 == am_memory_types) {
-	return erts_instr_get_type_info(BIF_P);
-    }
-    else if (BIF_ARG_1 == am_os_type) {
-	BIF_RET(os_type_tuple);
-    }
-    else if (BIF_ARG_1 == am_allocator) {
-	BIF_RET(erts_allocator_options((void *) BIF_P));
-    }
-    else if (BIF_ARG_1 == am_thread_pool_size) {
+	else if (BIF_ARG_1 == am_os_type) {
+		BIF_RET(os_type_tuple);
+	}
+	else if (BIF_ARG_1 == am_allocator) {
+		BIF_RET(erts_allocator_options((void *) BIF_P));
+	}
+	else if (BIF_ARG_1 == am_thread_pool_size) {
 #ifdef USE_THREADS
-	extern int erts_async_max_threads;
+extern int erts_async_max_threads;
 #endif
-	int n;
-	
+int n;
+
 #ifdef USE_THREADS
-	n = erts_async_max_threads;
+n = erts_async_max_threads;
 #else
-	n = 0;
+n = 0;
 #endif
-	BIF_RET(make_small(n));
-    }
-    else if (BIF_ARG_1 == am_alloc_util_allocators) {
-	BIF_RET(erts_alloc_util_allocators((void *) BIF_P));
-    }
-    else if (BIF_ARG_1 == am_elib_malloc) {
-	/* To be removed in R15 */
-        BIF_RET(am_false);
-    }
-    else if (BIF_ARG_1 == am_os_version) {
-	BIF_RET(os_version_tuple);
-    }
-    else if (BIF_ARG_1 == am_version) {
-	int n = strlen(ERLANG_VERSION);
-	hp = HAlloc(BIF_P, ((sizeof ERLANG_VERSION)-1) * 2);
-	BIF_RET(buf_to_intlist(&hp, ERLANG_VERSION, n, NIL));
-    }
-    else if (BIF_ARG_1 == am_machine) {
-	int n = strlen(EMULATOR);
-	hp = HAlloc(BIF_P, n*2);
-	BIF_RET(buf_to_intlist(&hp, EMULATOR, n, NIL));
-    }
-    else if (BIF_ARG_1 == am_garbage_collection) {
-	BIF_RET(am_generational);
+BIF_RET(make_small(n));
+	}
+	else if (BIF_ARG_1 == am_alloc_util_allocators) {
+		BIF_RET(erts_alloc_util_allocators((void *) BIF_P));
+	}
+	else if (BIF_ARG_1 == am_elib_malloc) {
+		/* To be removed in R15 */
+		BIF_RET(am_false);
+	}
+	else if (BIF_ARG_1 == am_os_version) {
+		BIF_RET(os_version_tuple);
+	}
+	else if (BIF_ARG_1 == am_version) {
+		int n = strlen(ERLANG_VERSION);
+		hp = HAlloc(BIF_P, ((sizeof ERLANG_VERSION)-1) * 2);
+		BIF_RET(buf_to_intlist(&hp, ERLANG_VERSION, n, NIL));
+	}
+	else if (BIF_ARG_1 == am_machine) {
+		int n = strlen(EMULATOR);
+		hp = HAlloc(BIF_P, n*2);
+		BIF_RET(buf_to_intlist(&hp, EMULATOR, n, NIL));
+	}
+	else if (BIF_ARG_1 == am_garbage_collection) {
+		BIF_RET(am_generational);
 #ifdef ERTS_OPCODE_COUNTER_SUPPORT
-    } else if (BIF_ARG_1 == am_instruction_counts) {
+	} else if (BIF_ARG_1 == am_instruction_counts) {
 #ifdef DEBUG
-	Eterm *endp;
+		Eterm *endp;
 #endif
-	Eterm *hp, **hpp;
-	Uint hsz, *hszp;
-	int i;
+		Eterm *hp, **hpp;
+		Uint hsz, *hszp;
+		int i;
 
-	hpp = NULL;
-	hsz = 0;
-	hszp = &hsz;
+		hpp = NULL;
+		hsz = 0;
+		hszp = &hsz;
 
-    bld_instruction_counts:
+		bld_instruction_counts:
 
-	res = NIL;
-	for (i = num_instructions-1; i >= 0; i--) {
-	    res = erts_bld_cons(hpp, hszp,
-				erts_bld_tuple(hpp, hszp, 2,
-					       am_atom_put(opc[i].name,
-							   strlen(opc[i].name)),
-					       erts_bld_uint(hpp, hszp,
-							     opc[i].count)),
-				res);
-	}
+		res = NIL;
+		for (i = num_instructions-1; i >= 0; i--) {
+			res = erts_bld_cons(hpp, hszp,
+					erts_bld_tuple(hpp, hszp, 2,
+							am_atom_put(opc[i].name,
+									strlen(opc[i].name)),
+									erts_bld_uint(hpp, hszp,
+											opc[i].count)),
+											res);
+		}
 
-	if (!hpp) {
-	    hp = HAlloc(BIF_P, hsz);
-	    hpp = &hp;
+		if (!hpp) {
+			hp = HAlloc(BIF_P, hsz);
+			hpp = &hp;
 #ifdef DEBUG
-	    endp = hp + hsz;
+			endp = hp + hsz;
 #endif
-	    hszp = NULL;
-	    goto bld_instruction_counts;
-	}
+			hszp = NULL;
+			goto bld_instruction_counts;
+		}
 
 #ifdef DEBUG
-	ASSERT(endp == hp);
+		ASSERT(endp == hp);
 #endif
 
-	BIF_RET(res);
+		BIF_RET(res);
 #endif /* #ifndef ERTS_SMP */
-    } else if (BIF_ARG_1 == am_wordsize) {
-	return make_small(sizeof(Eterm));
-    } else if (BIF_ARG_1 == am_endian) {
+	} else if (BIF_ARG_1 == am_wordsize) {
+		return make_small(sizeof(Eterm));
+	} else if (BIF_ARG_1 == am_endian) {
 #if defined(WORDS_BIGENDIAN)
-	return am_big;
+		return am_big;
 #else
-	return am_little;
+		return am_little;
 #endif
-    } else if (BIF_ARG_1 == am_heap_sizes) {
-	return erts_heap_sizes(BIF_P);
-    } else if (BIF_ARG_1 == am_heap_type) {
-	return am_private;
-    } else if (ERTS_IS_ATOM_STR("cpu_topology", BIF_ARG_1)) {
-	res = erts_get_cpu_topology_term(BIF_P, am_used);
-	BIF_TRAP1(erts_format_cpu_topology_trap, BIF_P, res);
-    } else if (ERTS_IS_ATOM_STR("update_cpu_info", BIF_ARG_1)) {
-	if (erts_update_cpu_info()) {
-	    ERTS_DECL_AM(changed);
-	    BIF_RET(AM_changed);
-	}
-	else {
-	    ERTS_DECL_AM(unchanged);
-	    BIF_RET(AM_unchanged);
-	}
+	} else if (BIF_ARG_1 == am_heap_sizes) {
+		return erts_heap_sizes(BIF_P);
+	} else if (BIF_ARG_1 == am_heap_type) {
+		return am_private;
+	} else if (ERTS_IS_ATOM_STR("cpu_topology", BIF_ARG_1)) {
+		res = erts_get_cpu_topology_term(BIF_P, am_used);
+		BIF_TRAP1(erts_format_cpu_topology_trap, BIF_P, res);
+	} else if (ERTS_IS_ATOM_STR("update_cpu_info", BIF_ARG_1)) {
+		if (erts_update_cpu_info()) {
+			ERTS_DECL_AM(changed);
+			BIF_RET(AM_changed);
+		}
+		else {
+			ERTS_DECL_AM(unchanged);
+			BIF_RET(AM_unchanged);
+		}
 #if defined(__GNUC__) && defined(HAVE_SOLARIS_SPARC_PERFMON)
-    } else if (ERTS_IS_ATOM_STR("ultrasparc_read_tick1", BIF_ARG_1)) {
-	register unsigned high asm("%l0");
-	register unsigned low asm("%l1");
+	} else if (ERTS_IS_ATOM_STR("ultrasparc_read_tick1", BIF_ARG_1)) {
+		register unsigned high asm("%l0");
+		register unsigned low asm("%l1");
 
-	hp = HAlloc(BIF_P, 5);
-	asm volatile (".word 0xa3410000;" /* rd %tick, %l1 */
-		      ".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
-		      : "=r" (high), "=r" (low));
-	res = TUPLE4(hp, make_small(high >> 16),
-		     make_small(high & 0xFFFF),
-		     make_small(low >> 16),
-		     make_small(low & 0xFFFF));
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("ultrasparc_read_tick2", BIF_ARG_1)) {
-	register unsigned high asm("%l0");
-	register unsigned low asm("%l1");
+		hp = HAlloc(BIF_P, 5);
+		asm volatile (".word 0xa3410000;" /* rd %tick, %l1 */
+				".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
+				: "=r" (high), "=r" (low));
+		res = TUPLE4(hp, make_small(high >> 16),
+				make_small(high & 0xFFFF),
+				make_small(low >> 16),
+				make_small(low & 0xFFFF));
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("ultrasparc_read_tick2", BIF_ARG_1)) {
+		register unsigned high asm("%l0");
+		register unsigned low asm("%l1");
 
-	asm volatile (".word 0xa3410000;" /* rd %tick, %l1 */
-		      ".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
-		      : "=r" (high), "=r" (low));
-	hp = HAlloc(BIF_P, 5);
-	res = TUPLE4(hp, make_small(high >> 16),
-		     make_small(high & 0xFFFF),
-		     make_small(low >> 16),
-		     make_small(low & 0xFFFF));
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("ultrasparc_read_pic1", BIF_ARG_1)) {
-	register unsigned high asm("%l0");
-	register unsigned low asm("%l1");
+		asm volatile (".word 0xa3410000;" /* rd %tick, %l1 */
+				".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
+				: "=r" (high), "=r" (low));
+		hp = HAlloc(BIF_P, 5);
+		res = TUPLE4(hp, make_small(high >> 16),
+				make_small(high & 0xFFFF),
+				make_small(low >> 16),
+				make_small(low & 0xFFFF));
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("ultrasparc_read_pic1", BIF_ARG_1)) {
+		register unsigned high asm("%l0");
+		register unsigned low asm("%l1");
 
-	hp = HAlloc(BIF_P, 5);
-	asm volatile (".word 0xa3444000;" /* rd %asr17, %l1 */
-		      ".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
-		      : "=r" (high), "=r" (low));
-	res = TUPLE4(hp, make_small(high >> 16),
-		     make_small(high & 0xFFFF),
-		     make_small(low >> 16),
-		     make_small(low & 0xFFFF));
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("ultrasparc_read_pic2", BIF_ARG_1)) {
-	register unsigned high asm("%l0");
-	register unsigned low asm("%l1");
+		hp = HAlloc(BIF_P, 5);
+		asm volatile (".word 0xa3444000;" /* rd %asr17, %l1 */
+				".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
+				: "=r" (high), "=r" (low));
+		res = TUPLE4(hp, make_small(high >> 16),
+				make_small(high & 0xFFFF),
+				make_small(low >> 16),
+				make_small(low & 0xFFFF));
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("ultrasparc_read_pic2", BIF_ARG_1)) {
+		register unsigned high asm("%l0");
+		register unsigned low asm("%l1");
 
-	asm volatile (".word 0xa3444000;" /* rd %asr17, %l1 */
-		      ".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
-		      : "=r" (high), "=r" (low));
-	hp = HAlloc(BIF_P, 5);
-	res = TUPLE4(hp, make_small(high >> 16),
-		     make_small(high & 0xFFFF),
-		     make_small(low >> 16),
-		     make_small(low & 0xFFFF));
-	BIF_RET(res);
+		asm volatile (".word 0xa3444000;" /* rd %asr17, %l1 */
+				".word 0xa1347020" /* srlx  %l1, 0x20, %l0 */
+				: "=r" (high), "=r" (low));
+		hp = HAlloc(BIF_P, 5);
+		res = TUPLE4(hp, make_small(high >> 16),
+				make_small(high & 0xFFFF),
+				make_small(low >> 16),
+				make_small(low & 0xFFFF));
+		BIF_RET(res);
 #endif
-    } else if (BIF_ARG_1 == am_threads) {
+	} else if (BIF_ARG_1 == am_threads) {
 #ifdef USE_THREADS
-	return am_true;
+		return am_true;
 #else
-	return am_false;
+		return am_false;
 #endif
-    } else if (BIF_ARG_1 == am_creation) {
-	return make_small(erts_this_node->creation);
-    } else if (BIF_ARG_1 == am_break_ignored) {
-      extern int ignore_break;
-      if (ignore_break) 
-	return am_true; 
-      else
-	return am_false;
-    }
-    /* Arguments that are unusual follow ... */
-    else if (ERTS_IS_ATOM_STR("logical_processors", BIF_ARG_1)) {
-	int no;
-	erts_get_logical_processors(&no, NULL, NULL);
-	if (no > 0)
-	    BIF_RET(make_small((Uint) no));
-	else {
-	    DECL_AM(unknown);
-	    BIF_RET(AM_unknown);
+	} else if (BIF_ARG_1 == am_creation) {
+		return make_small(erts_this_node->creation);
+	} else if (BIF_ARG_1 == am_break_ignored) {
+		extern int ignore_break;
+		if (ignore_break)
+			return am_true;
+		else
+			return am_false;
 	}
-    }
-    else if (ERTS_IS_ATOM_STR("logical_processors_online", BIF_ARG_1)) {
-	int no;
-	erts_get_logical_processors(NULL, &no, NULL);
-	if (no > 0)
-	    BIF_RET(make_small((Uint) no));
-	else {
-	    DECL_AM(unknown);
-	    BIF_RET(AM_unknown);
+	/* Arguments that are unusual follow ... */
+	else if (ERTS_IS_ATOM_STR("logical_processors", BIF_ARG_1)) {
+		int no;
+		erts_get_logical_processors(&no, NULL, NULL);
+		if (no > 0)
+			BIF_RET(make_small((Uint) no));
+		else {
+			DECL_AM(unknown);
+			BIF_RET(AM_unknown);
+		}
 	}
-    }
-    else if (ERTS_IS_ATOM_STR("logical_processors_available", BIF_ARG_1)) {
-	int no;
-	erts_get_logical_processors(NULL, NULL, &no);
-	if (no > 0)
-	    BIF_RET(make_small((Uint) no));
-	else {
-	    DECL_AM(unknown);
-	    BIF_RET(AM_unknown);
+	else if (ERTS_IS_ATOM_STR("logical_processors_online", BIF_ARG_1)) {
+		int no;
+		erts_get_logical_processors(NULL, &no, NULL);
+		if (no > 0)
+			BIF_RET(make_small((Uint) no));
+		else {
+			DECL_AM(unknown);
+			BIF_RET(AM_unknown);
+		}
 	}
-    } else if (ERTS_IS_ATOM_STR("otp_release", BIF_ARG_1)) {
-	int n = sizeof(ERLANG_OTP_RELEASE)-1;
-	hp = HAlloc(BIF_P, 2*n);
-	BIF_RET(buf_to_intlist(&hp, ERLANG_OTP_RELEASE, n, NIL));
-    } else if (ERTS_IS_ATOM_STR("driver_version", BIF_ARG_1)) {
-	char buf[42];
-	int n = erts_snprintf(buf, 42, "%d.%d",
-			      ERL_DRV_EXTENDED_MAJOR_VERSION,
-			      ERL_DRV_EXTENDED_MINOR_VERSION);
-	hp = HAlloc(BIF_P, 2*n);
-	BIF_RET(buf_to_intlist(&hp, buf, n, NIL));
-    } else if (ERTS_IS_ATOM_STR("smp_support", BIF_ARG_1)) {
+	else if (ERTS_IS_ATOM_STR("logical_processors_available", BIF_ARG_1)) {
+		int no;
+		erts_get_logical_processors(NULL, NULL, &no);
+		if (no > 0)
+			BIF_RET(make_small((Uint) no));
+		else {
+			DECL_AM(unknown);
+			BIF_RET(AM_unknown);
+		}
+	} else if (ERTS_IS_ATOM_STR("otp_release", BIF_ARG_1)) {
+		int n = sizeof(ERLANG_OTP_RELEASE)-1;
+		hp = HAlloc(BIF_P, 2*n);
+		BIF_RET(buf_to_intlist(&hp, ERLANG_OTP_RELEASE, n, NIL));
+	} else if (ERTS_IS_ATOM_STR("driver_version", BIF_ARG_1)) {
+		char buf[42];
+		int n = erts_snprintf(buf, 42, "%d.%d",
+				ERL_DRV_EXTENDED_MAJOR_VERSION,
+				ERL_DRV_EXTENDED_MINOR_VERSION);
+		hp = HAlloc(BIF_P, 2*n);
+		BIF_RET(buf_to_intlist(&hp, buf, n, NIL));
+	} else if (ERTS_IS_ATOM_STR("smp_support", BIF_ARG_1)) {
 #ifdef ERTS_SMP
-	BIF_RET(am_true);
+		BIF_RET(am_true);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif
-    } else if (ERTS_IS_ATOM_STR("scheduler_bind_type", BIF_ARG_1)) {
-	BIF_RET(erts_bound_schedulers_term(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("scheduler_bindings", BIF_ARG_1)) {
-	BIF_RET(erts_get_schedulers_binds(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("constant_pool_support", BIF_ARG_1)) {
-	BIF_RET(am_true);
-    } else if (ERTS_IS_ATOM_STR("schedulers", BIF_ARG_1)
-	       || ERTS_IS_ATOM_STR("schedulers_total", BIF_ARG_1)) {
-	res = make_small(erts_no_schedulers);
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("schedulers_state", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("scheduler_bind_type", BIF_ARG_1)) {
+		BIF_RET(erts_bound_schedulers_term(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("scheduler_bindings", BIF_ARG_1)) {
+		BIF_RET(erts_get_schedulers_binds(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("constant_pool_support", BIF_ARG_1)) {
+		BIF_RET(am_true);
+	} else if (ERTS_IS_ATOM_STR("schedulers", BIF_ARG_1)
+			|| ERTS_IS_ATOM_STR("schedulers_total", BIF_ARG_1)) {
+		res = make_small(erts_no_schedulers);
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("schedulers_state", BIF_ARG_1)) {
 #ifndef ERTS_SMP
-	Eterm *hp = HAlloc(BIF_P, 4);
-	res = TUPLE3(hp, make_small(1), make_small(1), make_small(1));
-	BIF_RET(res);
+		Eterm *hp = HAlloc(BIF_P, 4);
+		res = TUPLE3(hp, make_small(1), make_small(1), make_small(1));
+		BIF_RET(res);
 #else
-	Uint total, online, active;
-	switch (erts_schedulers_state(&total,
-				      &online,
-				      &active,
-				      1)) {
-	case ERTS_SCHDLR_SSPND_DONE: {
-	    Eterm *hp = HAlloc(BIF_P, 4);
-	    res = TUPLE3(hp,
-			 make_small(total),
-			 make_small(online),
-			 make_small(active));
-	    BIF_RET(res);
-	}
-	case ERTS_SCHDLR_SSPND_YIELD_RESTART:
-	    ERTS_VBUMP_ALL_REDS(BIF_P);
-	    BIF_TRAP1(bif_export[BIF_system_info_1],
-		      BIF_P, BIF_ARG_1);
-	default:
-	    ASSERT(0);
-	    BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
-	}
+		Uint total, online, active;
+		switch (erts_schedulers_state(&total,
+				&online,
+				&active,
+				1)) {
+		case ERTS_SCHDLR_SSPND_DONE: {
+			Eterm *hp = HAlloc(BIF_P, 4);
+			res = TUPLE3(hp,
+					make_small(total),
+					make_small(online),
+					make_small(active));
+			BIF_RET(res);
+		}
+		case ERTS_SCHDLR_SSPND_YIELD_RESTART:
+			ERTS_VBUMP_ALL_REDS(BIF_P);
+			BIF_TRAP1(bif_export[BIF_system_info_1],
+					BIF_P, BIF_ARG_1);
+		default:
+			ASSERT(0);
+			BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
+		}
 #endif
-    } else if (ERTS_IS_ATOM_STR("schedulers_online", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("schedulers_online", BIF_ARG_1)) {
 #ifndef ERTS_SMP
-	BIF_RET(make_small(1));
+		BIF_RET(make_small(1));
 #else
-	Uint total, online, active;
-	switch (erts_schedulers_state(&total, &online, &active, 1)) {
-	case ERTS_SCHDLR_SSPND_DONE:
-	    BIF_RET(make_small(online));
-	case ERTS_SCHDLR_SSPND_YIELD_RESTART:
-	    ERTS_VBUMP_ALL_REDS(BIF_P);
-	    BIF_TRAP1(bif_export[BIF_system_info_1],
-		      BIF_P, BIF_ARG_1);
-	default:
-	    ASSERT(0);
-	    BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
-	}
+		Uint total, online, active;
+		switch (erts_schedulers_state(&total, &online, &active, 1)) {
+		case ERTS_SCHDLR_SSPND_DONE:
+			BIF_RET(make_small(online));
+		case ERTS_SCHDLR_SSPND_YIELD_RESTART:
+			ERTS_VBUMP_ALL_REDS(BIF_P);
+			BIF_TRAP1(bif_export[BIF_system_info_1],
+					BIF_P, BIF_ARG_1);
+		default:
+			ASSERT(0);
+			BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
+		}
 #endif
-    } else if (ERTS_IS_ATOM_STR("schedulers_active", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("schedulers_active", BIF_ARG_1)) {
 #ifndef ERTS_SMP
-	BIF_RET(make_small(1));
+		BIF_RET(make_small(1));
 #else
-	Uint total, online, active;
-	switch (erts_schedulers_state(&total, &online, &active, 1)) {
-	case ERTS_SCHDLR_SSPND_DONE:
-	    BIF_RET(make_small(active));
-	case ERTS_SCHDLR_SSPND_YIELD_RESTART:
-	    ERTS_VBUMP_ALL_REDS(BIF_P);
-	    BIF_TRAP1(bif_export[BIF_system_info_1],
-		      BIF_P, BIF_ARG_1);
-	default:
-	    ASSERT(0);
-	    BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
-	}
+		Uint total, online, active;
+		switch (erts_schedulers_state(&total, &online, &active, 1)) {
+		case ERTS_SCHDLR_SSPND_DONE:
+			BIF_RET(make_small(active));
+		case ERTS_SCHDLR_SSPND_YIELD_RESTART:
+			ERTS_VBUMP_ALL_REDS(BIF_P);
+			BIF_TRAP1(bif_export[BIF_system_info_1],
+					BIF_P, BIF_ARG_1);
+		default:
+			ASSERT(0);
+			BIF_ERROR(BIF_P, EXC_INTERNAL_ERROR);
+		}
 #endif
-    } else if (ERTS_IS_ATOM_STR("run_queues", BIF_ARG_1)) {
-	res = make_small(erts_no_run_queues);
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("c_compiler_used", BIF_ARG_1)) {
-	Eterm *hp = NULL;
-	Uint sz = 0;
-	(void) c_compiler_used(NULL, &sz);
-	if (sz)
-	    hp = HAlloc(BIF_P, sz);
-	BIF_RET(c_compiler_used(&hp, NULL));
-    } else if (ERTS_IS_ATOM_STR("stop_memory_trace", BIF_ARG_1)) {
-	erts_mtrace_stop();
-	BIF_RET(am_true);
-    } else if (ERTS_IS_ATOM_STR("context_reductions", BIF_ARG_1)) {
-	BIF_RET(make_small(CONTEXT_REDS));
-    } else if (ERTS_IS_ATOM_STR("kernel_poll", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("run_queues", BIF_ARG_1)) {
+		res = make_small(erts_no_run_queues);
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("c_compiler_used", BIF_ARG_1)) {
+		Eterm *hp = NULL;
+		Uint sz = 0;
+		(void) c_compiler_used(NULL, &sz);
+		if (sz)
+			hp = HAlloc(BIF_P, sz);
+		BIF_RET(c_compiler_used(&hp, NULL));
+	} else if (ERTS_IS_ATOM_STR("stop_memory_trace", BIF_ARG_1)) {
+		erts_mtrace_stop();
+		BIF_RET(am_true);
+	} else if (ERTS_IS_ATOM_STR("context_reductions", BIF_ARG_1)) {
+		BIF_RET(make_small(CONTEXT_REDS));
+	} else if (ERTS_IS_ATOM_STR("kernel_poll", BIF_ARG_1)) {
 #ifdef ERTS_ENABLE_KERNEL_POLL
-	BIF_RET(erts_use_kernel_poll ? am_true : am_false);
+		BIF_RET(erts_use_kernel_poll ? am_true : am_false);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif    
-    } else if (ERTS_IS_ATOM_STR("lock_checking", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("lock_checking", BIF_ARG_1)) {
 #ifdef ERTS_ENABLE_LOCK_CHECK
-	BIF_RET(am_true);
+		BIF_RET(am_true);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif
-    } else if (ERTS_IS_ATOM_STR("lock_counting", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("lock_counting", BIF_ARG_1)) {
 #ifdef ERTS_ENABLE_LOCK_COUNT
-	BIF_RET(am_true);
+		BIF_RET(am_true);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif
-    } else if (ERTS_IS_ATOM_STR("debug_compiled", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("debug_compiled", BIF_ARG_1)) {
 #ifdef DEBUG
-	BIF_RET(am_true);
+		BIF_RET(am_true);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif
-    } else if (ERTS_IS_ATOM_STR("check_io", BIF_ARG_1)) {
-	BIF_RET(erts_check_io_info(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("multi_scheduling_blockers", BIF_ARG_1)) {
+	} else if (ERTS_IS_ATOM_STR("check_io", BIF_ARG_1)) {
+		BIF_RET(erts_check_io_info(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("multi_scheduling_blockers", BIF_ARG_1)) {
 #ifndef ERTS_SMP
-	BIF_RET(NIL);
+		BIF_RET(NIL);
 #else
-	if (erts_no_schedulers == 1)
-	    BIF_RET(NIL);
-	else
-	    BIF_RET(erts_multi_scheduling_blockers(BIF_P));
+		if (erts_no_schedulers == 1)
+			BIF_RET(NIL);
+		else
+			BIF_RET(erts_multi_scheduling_blockers(BIF_P));
 #endif
-    } else if (ERTS_IS_ATOM_STR("modified_timing_level", BIF_ARG_1)) {
-	BIF_RET(ERTS_USE_MODIFIED_TIMING()
-		? make_small(erts_modified_timing_level)
-		: am_undefined);
-    } else if (ERTS_IS_ATOM_STR("port_tasks", BIF_ARG_1)) {
-	BIF_RET(am_true);
-    } else if (ERTS_IS_ATOM_STR("io_thread", BIF_ARG_1)) {
-	BIF_RET(am_false);
-    } else if (ERTS_IS_ATOM_STR("scheduling_statistics", BIF_ARG_1)) {
-	BIF_RET(erts_sched_stat_term(BIF_P, 0));
-    } else if (ERTS_IS_ATOM_STR("total_scheduling_statistics", BIF_ARG_1)) {
-	BIF_RET(erts_sched_stat_term(BIF_P, 1));
-    } else if (ERTS_IS_ATOM_STR("taints", BIF_ARG_1)) {
-	BIF_RET(erts_nif_taints(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("reader_groups_map", BIF_ARG_1)) {
-	BIF_RET(erts_get_reader_groups_map(BIF_P));
-    } else if (ERTS_IS_ATOM_STR("dist_buf_busy_limit", BIF_ARG_1)) {
-	Uint hsz = 0;
+	} else if (ERTS_IS_ATOM_STR("modified_timing_level", BIF_ARG_1)) {
+		BIF_RET(ERTS_USE_MODIFIED_TIMING()
+				? make_small(erts_modified_timing_level)
+						: am_undefined);
+	} else if (ERTS_IS_ATOM_STR("port_tasks", BIF_ARG_1)) {
+		BIF_RET(am_true);
+	} else if (ERTS_IS_ATOM_STR("io_thread", BIF_ARG_1)) {
+		BIF_RET(am_false);
+	} else if (ERTS_IS_ATOM_STR("scheduling_statistics", BIF_ARG_1)) {
+		BIF_RET(erts_sched_stat_term(BIF_P, 0));
+	} else if (ERTS_IS_ATOM_STR("total_scheduling_statistics", BIF_ARG_1)) {
+		BIF_RET(erts_sched_stat_term(BIF_P, 1));
+	} else if (ERTS_IS_ATOM_STR("taints", BIF_ARG_1)) {
+		BIF_RET(erts_nif_taints(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("reader_groups_map", BIF_ARG_1)) {
+		BIF_RET(erts_get_reader_groups_map(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("dist_buf_busy_limit", BIF_ARG_1)) {
+		Uint hsz = 0;
 
- 	(void) erts_bld_uint(NULL, &hsz, erts_dist_buf_busy_limit);
-	hp = hsz ? HAlloc(BIF_P, hsz) : NULL;
-	res = erts_bld_uint(&hp, NULL, erts_dist_buf_busy_limit);
-	BIF_RET(res);
-    } else if (ERTS_IS_ATOM_STR("print_ethread_info", BIF_ARG_1)) {
+		(void) erts_bld_uint(NULL, &hsz, erts_dist_buf_busy_limit);
+		hp = hsz ? HAlloc(BIF_P, hsz) : NULL;
+		res = erts_bld_uint(&hp, NULL, erts_dist_buf_busy_limit);
+		BIF_RET(res);
+	} else if (ERTS_IS_ATOM_STR("print_ethread_info", BIF_ARG_1)) {
 #if defined(ETHR_NATIVE_ATOMIC32_IMPL) \
-    || defined(ETHR_NATIVE_ATOMIC64_IMPL) \
-    || defined(ETHR_NATIVE_DW_ATOMIC_IMPL)
-	int i;
-	char **str;
+		|| defined(ETHR_NATIVE_ATOMIC64_IMPL) \
+		|| defined(ETHR_NATIVE_DW_ATOMIC_IMPL)
+		int i;
+		char **str;
 #endif
 #ifdef ETHR_NATIVE_ATOMIC32_IMPL
-	erts_printf("32-bit native atomics: %s\n",
-		    ETHR_NATIVE_ATOMIC32_IMPL);
-	str = ethr_native_atomic32_ops();
-	for (i = 0; str[i]; i++)
-	    erts_printf("ethr_native_atomic32_%s()\n", str[i]);
+		erts_printf("32-bit native atomics: %s\n",
+				ETHR_NATIVE_ATOMIC32_IMPL);
+		str = ethr_native_atomic32_ops();
+		for (i = 0; str[i]; i++)
+			erts_printf("ethr_native_atomic32_%s()\n", str[i]);
 #endif
 #ifdef ETHR_NATIVE_ATOMIC64_IMPL
-	erts_printf("64-bit native atomics: %s\n",
-		    ETHR_NATIVE_ATOMIC64_IMPL);
-	str = ethr_native_atomic64_ops();
-	for (i = 0; str[i]; i++)
-	    erts_printf("ethr_native_atomic64_%s()\n", str[i]);
+		erts_printf("64-bit native atomics: %s\n",
+				ETHR_NATIVE_ATOMIC64_IMPL);
+		str = ethr_native_atomic64_ops();
+		for (i = 0; str[i]; i++)
+			erts_printf("ethr_native_atomic64_%s()\n", str[i]);
 #endif
 #ifdef ETHR_NATIVE_DW_ATOMIC_IMPL
-	if (ethr_have_native_dw_atomic()) {
-	    erts_printf("Double word native atomics: %s\n",
-			ETHR_NATIVE_DW_ATOMIC_IMPL);
-	    str = ethr_native_dw_atomic_ops();
-	    for (i = 0; str[i]; i++)
-		erts_printf("ethr_native_dw_atomic_%s()\n", str[i]);
-	    str = ethr_native_su_dw_atomic_ops();
-	    for (i = 0; str[i]; i++)
-		erts_printf("ethr_native_su_dw_atomic_%s()\n", str[i]);
-	}
+		if (ethr_have_native_dw_atomic()) {
+			erts_printf("Double word native atomics: %s\n",
+					ETHR_NATIVE_DW_ATOMIC_IMPL);
+			str = ethr_native_dw_atomic_ops();
+			for (i = 0; str[i]; i++)
+				erts_printf("ethr_native_dw_atomic_%s()\n", str[i]);
+			str = ethr_native_su_dw_atomic_ops();
+			for (i = 0; str[i]; i++)
+				erts_printf("ethr_native_su_dw_atomic_%s()\n", str[i]);
+		}
 #endif
 #ifdef ETHR_NATIVE_SPINLOCK_IMPL
-	erts_printf("Native spin-locks: %s\n", ETHR_NATIVE_SPINLOCK_IMPL);
+		erts_printf("Native spin-locks: %s\n", ETHR_NATIVE_SPINLOCK_IMPL);
 #endif
 #ifdef ETHR_NATIVE_RWSPINLOCK_IMPL
-	erts_printf("Native rwspin-locks: %s\n", ETHR_NATIVE_RWSPINLOCK_IMPL);
+		erts_printf("Native rwspin-locks: %s\n", ETHR_NATIVE_RWSPINLOCK_IMPL);
 #endif
 #ifdef ETHR_X86_RUNTIME_CONF_HAVE_SSE2__
-	erts_printf("SSE2 support: %s\n", (ETHR_X86_RUNTIME_CONF_HAVE_SSE2__
-					   ? "yes" : "no"));
+		erts_printf("SSE2 support: %s\n", (ETHR_X86_RUNTIME_CONF_HAVE_SSE2__
+				? "yes" : "no"));
 #endif
 #ifdef ETHR_X86_OUT_OF_ORDER
-	erts_printf("x86"
+		erts_printf("x86"
 #ifdef ARCH_64
-		    "_64"
+				"_64"
 #endif
-		    " out of order\n");
+				" out of order\n");
 #endif
 #ifdef ETHR_SPARC_TSO
-	erts_printf("Sparc TSO\n");
+		erts_printf("Sparc TSO\n");
 #endif
 #ifdef ETHR_SPARC_PSO
-	erts_printf("Sparc PSO\n");
+		erts_printf("Sparc PSO\n");
 #endif
 #ifdef ETHR_SPARC_RMO
-	erts_printf("Sparc RMO\n");
+		erts_printf("Sparc RMO\n");
 #endif
 #if defined(ETHR_PPC_HAVE_LWSYNC)
-	erts_printf("Have lwsync instruction: yes\n");
+		erts_printf("Have lwsync instruction: yes\n");
 #elif defined(ETHR_PPC_HAVE_NO_LWSYNC)
-	erts_printf("Have lwsync instruction: no\n");
+		erts_printf("Have lwsync instruction: no\n");
 #elif defined(ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__)
-	erts_printf("Have lwsync instruction: %s (runtime test)\n",
-		    ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__ ? "yes" : "no");
+		erts_printf("Have lwsync instruction: %s (runtime test)\n",
+				ETHR_PPC_RUNTIME_CONF_HAVE_LWSYNC__ ? "yes" : "no");
 #endif
-	BIF_RET(am_true);
-    }
-    else if (ERTS_IS_ATOM_STR("dynamic_trace", BIF_ARG_1)) {
+		BIF_RET(am_true);
+	}
+	else if (ERTS_IS_ATOM_STR("dynamic_trace", BIF_ARG_1)) {
 #if defined(USE_DTRACE)
-	DECL_AM(dtrace);
-	BIF_RET(AM_dtrace);
+		DECL_AM(dtrace);
+		BIF_RET(AM_dtrace);
 #elif defined(USE_SYSTEMTAP)
-	DECL_AM(systemtap);
-	BIF_RET(AM_systemtap);
+		DECL_AM(systemtap);
+		BIF_RET(AM_systemtap);
 #else
-	BIF_RET(am_none);
+		BIF_RET(am_none);
 #endif
-    }	    
-    else if (ERTS_IS_ATOM_STR("dynamic_trace_probes", BIF_ARG_1)) {
+	}
+	else if (ERTS_IS_ATOM_STR("dynamic_trace_probes", BIF_ARG_1)) {
 #if defined(USE_VM_PROBES)
-	BIF_RET(am_true);
+		BIF_RET(am_true);
 #else
-	BIF_RET(am_false);
+		BIF_RET(am_false);
 #endif	
-    }
+	}
 #ifdef ERTS_SMP
-    else if (ERTS_IS_ATOM_STR("thread_progress", BIF_ARG_1)) {
-	erts_thr_progress_dbg_print_state();
-	BIF_RET(am_true);
-    }
+	else if (ERTS_IS_ATOM_STR("thread_progress", BIF_ARG_1)) {
+		erts_thr_progress_dbg_print_state();
+		BIF_RET(am_true);
+	} else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
+		BIF_RET(make_small(proc_sched_get_initial_placement_strategy()));
+	} else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
+		BIF_RET(make_small(proc_sched_get_migration_strategy()));
+	} else if (ERTS_IS_ATOM_STR("scheduler_ws_strategy", BIF_ARG_1)) {
+		BIF_RET(make_small(proc_sched_get_ws_strategy()));
+	} else if (ERTS_IS_ATOM_STR("hub_process", BIF_ARG_1)) {
+		BIF_RET(BIF_P->hub ? am_true : am_false);
+	} else if (ERTS_IS_ATOM_STR("hub_processes", BIF_ARG_1)) {
+		BIF_RET(hub_processes_list(BIF_P));
+	} else if (ERTS_IS_ATOM_STR("hub_processes_count", BIF_ARG_1)) {
+		BIF_RET(make_small(hub_processes_count()));
+	}
 #endif
-
-    else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
-    	BIF_RET(make_small(proc_sched_get_initial_placement_strategy()));
-    } else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
-    	BIF_RET(make_small(proc_sched_get_migration_strategy()));
-    } else if (ERTS_IS_ATOM_STR("scheduler_ws_strategy", BIF_ARG_1)) {
-    	BIF_RET(make_small(proc_sched_get_ws_strategy()));
-    }
-
-    BIF_ERROR(BIF_P, BADARG);
+	BIF_ERROR(BIF_P, BADARG);
 }
 
 BIF_RETTYPE

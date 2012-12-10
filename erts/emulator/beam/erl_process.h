@@ -678,6 +678,13 @@ struct ErtsPendingSuspend_ {
 #  define BIN_OLD_VHEAP_SZ(p) (p)->bin_old_vheap_sz
 #  define BIN_OLD_VHEAP(p)    (p)->bin_old_vheap
 
+
+typedef struct _StructProcessLinkedList{
+	Process *p;
+	struct _StructProcessLinkedList *next;
+	struct _StructProcessLinkedList *prev;
+} ProcessLinkedList;
+
 struct process {
     /* All fields in the PCB that differs between different heap
      * architectures, have been moved to the end of this struct to
@@ -852,8 +859,12 @@ struct process {
     int spawning_numa_node;
     int home_numa_node;
 #endif
+    ProcessLinkedList* hub;
 
 };
+ERTS_INLINE Uint hub_processes_count(void);
+ERTS_INLINE void set_hub_process(Process *p, int bool);
+ERTS_INLINE Eterm hub_processes_list(Process* p);
 
 #ifdef CHECK_FOR_HOLES
 # define INIT_HOLE_CHECK(p)			\
@@ -908,9 +919,10 @@ void erts_check_for_holes(Process* p);
  * Possible flags for the flags field in ErlSpawnOpts below.
  */
 
-#define SPO_LINK 1
-#define SPO_USE_ARGS 2
-#define SPO_MONITOR 4
+#define SPO_LINK		1
+#define SPO_USE_ARGS	2
+#define SPO_MONITOR		4
+#define SPO_HUB			8
 
 /*
  * The following struct contains options for a process to be spawned.

@@ -792,125 +792,126 @@ BIF_RETTYPE spawn_link_3(BIF_ALIST_3)
 
 /**********************************************************************/
 
-BIF_RETTYPE spawn_opt_1(BIF_ALIST_1)
-{
-    ErlSpawnOpts so;
-    Eterm pid;
-    Eterm* tp;
-    Eterm ap;
-    Eterm arg;
-    Eterm res;
+BIF_RETTYPE spawn_opt_1(BIF_ALIST_1) {
+	ErlSpawnOpts so;
+	Eterm pid;
+	Eterm* tp;
+	Eterm ap;
+	Eterm arg;
+	Eterm res;
 
-    /*
-     * Check that the first argument is a tuple of four elements.
-     */
-    if (is_not_tuple(BIF_ARG_1)) {
-    error:
-	BIF_ERROR(BIF_P, BADARG);
-    }
-    tp = tuple_val(BIF_ARG_1);
-    if (*tp != make_arityval(4))
-	goto error;
-
-    /*
-     * Store default values for options.
-     */
-    so.flags          = SPO_USE_ARGS;
-    so.min_heap_size  = H_MIN_SIZE;
-    so.min_vheap_size = BIN_VH_MIN_SIZE;
-    so.priority       = PRIORITY_NORMAL;
-    so.max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
-    so.scheduler      = 0;
-
-    /*
-     * Walk through the option list.
-     */
-    ap = tp[4];
-    while (is_list(ap)) {
-	arg = CAR(list_val(ap));
-	if (arg == am_link) {
-	    so.flags |= SPO_LINK;
-	} else if (arg == am_monitor) {
-	    so.flags |= SPO_MONITOR;
-	} else if (is_tuple(arg)) {
-	    Eterm* tp2 = tuple_val(arg);
-	    Eterm val;
-	    if (*tp2 != make_arityval(2))
-		goto error;
-	    arg = tp2[1];
-	    val = tp2[2];
-	    if (arg == am_priority) {
-		if (val == am_max)
-		    so.priority = PRIORITY_MAX;
-		else if (val == am_high)
-		    so.priority = PRIORITY_HIGH;
-		else if (val == am_normal)
-		    so.priority = PRIORITY_NORMAL;
-		else if (val == am_low)
-		    so.priority = PRIORITY_LOW;
-		else
-		    goto error;
-	    } else if (arg == am_min_heap_size && is_small(val)) {
-		Sint min_heap_size = signed_val(val);
-		if (min_heap_size < 0) {
-		    goto error;
-		} else if (min_heap_size < H_MIN_SIZE) {
-		    so.min_heap_size = H_MIN_SIZE;
-		} else {
-		    so.min_heap_size = erts_next_heap_size(min_heap_size, 0);
-		}
-	    } else if (arg == am_min_bin_vheap_size && is_small(val)) {
-		Sint min_vheap_size = signed_val(val);
-		if (min_vheap_size < 0) {
-		    goto error;
-		} else if (min_vheap_size < BIN_VH_MIN_SIZE) {
-		    so.min_vheap_size = BIN_VH_MIN_SIZE;
-		} else {
-		    so.min_vheap_size = erts_next_heap_size(min_vheap_size, 0);
-		}
-	    } else if (arg == am_fullsweep_after && is_small(val)) {
-		Sint max_gen_gcs = signed_val(val);
-		if (max_gen_gcs < 0) {
-		    goto error;
-		} else {
-		    so.max_gen_gcs = max_gen_gcs;
-		}
-	    } else if (arg == am_scheduler && is_small(val)) {
-		Sint scheduler = signed_val(val);
-		if (scheduler < 0 || erts_no_schedulers < scheduler)
-		    goto error;
-		so.scheduler = (int) scheduler;
-	    } else {
-		goto error;
-	    }
-	} else {
-	    goto error;
+	/*
+	 * Check that the first argument is a tuple of four elements.
+	 */
+	if (is_not_tuple(BIF_ARG_1)) {
+		error:
+		BIF_ERROR(BIF_P, BADARG);
 	}
-	ap = CDR(list_val(ap));
-    }
-    if (is_not_nil(ap)) {
-	goto error;
-    }
+	tp = tuple_val(BIF_ARG_1);
+	if (*tp != make_arityval(4))
+		goto error;
 
-    /*
-     * Spawn the process.
-     */
-    pid = erl_create_process(BIF_P, tp[1], tp[2], tp[3], &so);
-    if (is_non_value(pid)) {
-	BIF_ERROR(BIF_P, so.error_code);
-    } else if (so.flags & SPO_MONITOR) {
-	Eterm* hp = HAlloc(BIF_P, 3);
-	res = TUPLE2(hp, pid, so.mref);
-    } else {
-	res = pid;
-    }
+	/*
+	 * Store default values for options.
+	 */
+	so.flags          = SPO_USE_ARGS;
+	so.min_heap_size  = H_MIN_SIZE;
+	so.min_vheap_size = BIN_VH_MIN_SIZE;
+	so.priority       = PRIORITY_NORMAL;
+	so.max_gen_gcs    = (Uint16) erts_smp_atomic32_read_nob(&erts_max_gen_gcs);
+	so.scheduler      = 0;
 
-    if (ERTS_USE_MODIFIED_TIMING()) {
-	BIF_TRAP2(erts_delay_trap, BIF_P, res, ERTS_MODIFIED_TIMING_DELAY);
-    }
-    else {
-	BIF_RET(res);
-    }
+	/*
+	 * Walk through the option list.
+	 */
+	ap = tp[4];
+	while (is_list(ap)) {
+		arg = CAR(list_val(ap));
+		if (arg == am_link) {
+			so.flags |= SPO_LINK;
+		} else if (arg == am_monitor) {
+			so.flags |= SPO_MONITOR;
+		} else if (ERTS_IS_ATOM_STR("hub_process", arg)) {
+			so.flags |= SPO_HUB;
+		} else if (is_tuple(arg)) {
+			Eterm* tp2 = tuple_val(arg);
+			Eterm val;
+			if (*tp2 != make_arityval(2))
+				goto error;
+			arg = tp2[1];
+			val = tp2[2];
+			if (arg == am_priority) {
+				if (val == am_max)
+					so.priority = PRIORITY_MAX;
+				else if (val == am_high)
+					so.priority = PRIORITY_HIGH;
+				else if (val == am_normal)
+					so.priority = PRIORITY_NORMAL;
+				else if (val == am_low)
+					so.priority = PRIORITY_LOW;
+				else
+					goto error;
+			} else if (arg == am_min_heap_size && is_small(val)) {
+				Sint min_heap_size = signed_val(val);
+				if (min_heap_size < 0) {
+					goto error;
+				} else if (min_heap_size < H_MIN_SIZE) {
+					so.min_heap_size = H_MIN_SIZE;
+				} else {
+					so.min_heap_size = erts_next_heap_size(min_heap_size, 0);
+				}
+			} else if (arg == am_min_bin_vheap_size && is_small(val)) {
+				Sint min_vheap_size = signed_val(val);
+				if (min_vheap_size < 0) {
+					goto error;
+				} else if (min_vheap_size < BIN_VH_MIN_SIZE) {
+					so.min_vheap_size = BIN_VH_MIN_SIZE;
+				} else {
+					so.min_vheap_size = erts_next_heap_size(min_vheap_size, 0);
+				}
+			} else if (arg == am_fullsweep_after && is_small(val)) {
+				Sint max_gen_gcs = signed_val(val);
+				if (max_gen_gcs < 0) {
+					goto error;
+				} else {
+					so.max_gen_gcs = max_gen_gcs;
+				}
+			} else if (arg == am_scheduler && is_small(val)) {
+				Sint scheduler = signed_val(val);
+				if (scheduler < 0 || erts_no_schedulers < scheduler)
+					goto error;
+				so.scheduler = (int) scheduler;
+			} else {
+				goto error;
+			}
+		} else {
+			goto error;
+		}
+		ap = CDR(list_val(ap));
+	}
+	if (is_not_nil(ap)) {
+		goto error;
+	}
+
+	/*
+	 * Spawn the process.
+	 */
+	pid = erl_create_process(BIF_P, tp[1], tp[2], tp[3], &so);
+	if (is_non_value(pid)) {
+		BIF_ERROR(BIF_P, so.error_code);
+	} else if (so.flags & SPO_MONITOR) {
+		Eterm* hp = HAlloc(BIF_P, 3);
+		res = TUPLE2(hp, pid, so.mref);
+	} else {
+		res = pid;
+	}
+
+	if (ERTS_USE_MODIFIED_TIMING()) {
+		BIF_TRAP2(erts_delay_trap, BIF_P, res, ERTS_MODIFIED_TIMING_DELAY);
+	}
+	else {
+		BIF_RET(res);
+	}
 }
 
   
@@ -4330,6 +4331,15 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     	newVal = signed_val(BIF_ARG_2);
     	proc_sched_set_ws_strategy(newVal);
     	BIF_RET(make_small(ret));
+    } else if (ERTS_IS_ATOM_STR("hub_process", BIF_ARG_1)) {
+    	void* before = BIF_P->hub;
+    	if (BIF_ARG_2 == am_true)
+    		set_hub_process(BIF_P, 1);
+    	else if (BIF_ARG_2 == am_false)
+    		set_hub_process(BIF_P, 0);
+    	else
+    		goto error;
+    	BIF_RET(before ? am_true : am_false);
     }
 #endif
 
