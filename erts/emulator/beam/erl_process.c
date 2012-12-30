@@ -6871,9 +6871,11 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 	if (DTRACE_ENABLED(process_spawn)) {
 		DTRACE_CHARBUF(process_name, DTRACE_TERM_BUF_SIZE);
 		DTRACE_CHARBUF(mfa, DTRACE_TERM_BUF_SIZE);
+    DTRACE_CHARBUF(parent_name, DTRACE_TERM_BUF_SIZE);
+    dtrace_proc_str(parent, parent_name);
 
-		dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
-		DTRACE2(process_spawn, process_name, mfa);
+    dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
+    DTRACE3(process_spawn, process_name, mfa, parent_name);
 	}
 #endif
 
