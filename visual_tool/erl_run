@@ -1,0 +1,7 @@
+#!/bin/bash
+
+DIR=`dirname $0`
+
+/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/erl -noshell -pa $DIR/bench_explained $DIR/bench_explained/orbit_int -s $* -s init stop
+echo "/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/erl -noshell -pa $DIR/bench_explained $DIR/bench_explained/orbit_int -s $* -s init stop"
+

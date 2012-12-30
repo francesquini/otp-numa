@@ -1,0 +1,11 @@
+#!/bin/bash
+
+DIR=`dirname $0`
+ERL_RUN=$DIR/erl_run
+
+if [ "$(whoami)" != "root" ]; then
+  echo "Sorry, to probe the Erlang VM you must run this script as root."
+  exit 1
+fi
+
+stap $DIR/profile.systemtap -o traces/$1 -c "$ERL_RUN ${*:2}"

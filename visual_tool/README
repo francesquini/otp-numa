@@ -1,0 +1,24 @@
+The Visual tool represents an erlang program as a graph, where the vertices
+are erlang actors and the edges are communications between the actors
+(normal lines) and parent/child relationships between the actors (dashed
+lines).
+
+The size of a vertex corresponds to the actor's lifespan (the bigger is
+a vertex - the longer is the lifespan). The width of the normal-line
+edges corresponds to the amount of messages exchanged between the actors
+(the wider is an edge - the bigger is the amount of the messages).
+
+To work with Visual tools, the user has to:
+
+1) generate a trace file using erl_prof script:
+$ sudo ./erl_prof trace_file_name program_name main_function_name
+
+for example, to generate a trace for "ehb" program (stored in bench_explained):
+$sudo ./erl_prof ehb_trace ehb run
+
+The trace file is stored in traces/ folder
+
+2) visualize a trace file:
+$ python parse.py trace_file_name
+
+A Ubigraph window with the result graph should open.
