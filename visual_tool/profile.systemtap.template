@@ -8,7 +8,7 @@ probe begin {
   start = gettimeofday_ns();
 }
 
-probe process("/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/beam.smp").mark("message__send")
+probe process("?BINDIR?/beam.smp").mark("message__send")
 {
     if ($arg4 == 0 && $arg5 == 0 && $arg6 == 0) {
         printf("send:   %s -> %s : %d words %d\n",
@@ -21,12 +21,12 @@ probe process("/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/beam.smp").mark("mes
     }
 }
 
-probe process("/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/beam.smp").mark("process__spawn")
+probe process("?BINDIR?/beam.smp").mark("process__spawn")
 {
     printf("spawn: %s parent is %s %d\n", user_string($arg1), user_string($arg3), now());
 }
 
-probe process("/home/iegorov/soft/lib/erlang/erts-5.9.2/bin/beam.smp").mark("process__exit")
+probe process("?BINDIR?/beam.smp").mark("process__exit")
 {
     printf("exit: %s reason %s %d\n", user_string($arg1), user_string($arg2), now());
 }

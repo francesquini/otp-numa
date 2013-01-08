@@ -1,11 +1,16 @@
 #!/bin/bash
 
 DIR=`dirname $0`
+DIR=$(readlink -f $DIR)
 ERL_RUN=$DIR/erl_run
 
 if [ "$(whoami)" != "root" ]; then
   echo "Sorry, to probe the Erlang VM you must run this script as root."
   exit 1
 fi
+
+LBINDIR=`grep BINDIR= $DIR/../bin/erl`
+LBINDIR=$DIR/../${LBINDIR:16}
+sed "s%?BINDIR?%$LBINDIR%g" $DIR/profile.systemtap.template > $DIR/profile.systemtap
 
 stap $DIR/profile.systemtap -o traces/$1 -c "$ERL_RUN ${*:2}"
