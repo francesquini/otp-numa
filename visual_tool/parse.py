@@ -9,7 +9,7 @@ U = ubigraph.Ubigraph()
 U.clear()
 
 redSphere = U.newVertexStyle(shape="sphere", color="#ff0000")
-wideEdge = U.newEdgeStyle(color="#ff9900", stroke="solid")#, spline=True)
+wideEdge = U.newEdgeStyle(color="#8888ff", stroke="solid")#, spline=True)
 parentChildEdge = U.newEdgeStyle(color="#0099ff", arrow=True,
     arrow_position=1.0, stroke="dashed")
 #parentChildEdge = U.newEdgeStyle(color="#0099ff", arrow=True,
@@ -32,55 +32,59 @@ if len(sys.argv) == 1:
 f = open("traces/"+sys.argv[1], "r")
 all_lines = f.readlines()
 
-start_exec_time = int(all_lines[0].split()[-1])
-end_exec_time = int(all_lines[-1].split()[-1]) - start_exec_time
+start_exec_time = float(all_lines[0].split()[-1])
+end_exec_time = float(all_lines[-1].split()[-1])
+total_exec_time = end_exec_time - start_exec_time
+print 'Total Execution Time:' +  str(total_exec_time/1000000000)
 
 for line in all_lines:
   tokens = line.split()
-  if tokens[0] == "spawn:":
+  if tokens[0] == "p": #spawn
     vertex_num += 1
-    if (vertex_num > 28 or vertex_num == 3):
-      actors_birth[tokens[1]] = int(tokens[-1]) - start_exec_time
+    if (vertex_num > 25 or vertex_num == 3):
+      actors_birth[tokens[1]] = float(tokens[-1])
       vertices[tokens[1]] = 0
-      actors_parent[tokens[1]] = tokens[4]
-  elif tokens[0] == "send:" and len(tokens) == 8:
+      actors_parent[tokens[1]] = tokens[2]
+  elif tokens[0] == "s": #send
     if tokens[1] in vertices:
-      if tokens[3] in vertices:
+      if tokens[2] in vertices:
         sender = tokens[1]
-        receiver = tokens[3]
+        receiver = tokens[2]
         if (sender, receiver) in edges:
-          edges[(sender, receiver)] += 1
+          edges[(sender, receiver)] += int(tokens[3])
         else:
-          edges[(sender, receiver)] = 1
-  elif tokens[0] == "exit:":
+          edges[(sender, receiver)] = int(tokens[3])
+  elif tokens[0] == "e": #exit
     if tokens[1] in vertices:
-      actors_lifespan[tokens[1]] = (int(tokens[-1]) - start_exec_time) - actors_birth[tokens[1]]
-#    if tokens[1] == "<0.2.0>":
-#      parent_exit_time = actors_lifespan["<0.2.0>"]
+      actors_lifespan[tokens[1]] = float(tokens[-1]) - actors_birth[tokens[1]]
+
 
 ## Draw vertices
 for vertex in vertices.keys():
 #  if vertex not in actors_lifespan.keys():
 #    print "hey, what about me: %s?" % vertex
 #    actors_lifespan[vertex] = parent_exit_time - actors_birth[vertex]
-  vertex_size = 1. / math.log(float(end_exec_time) / float(actors_lifespan[vertex]))
+  if vertex in actors_lifespan:
+    ls = actors_lifespan[vertex] / total_exec_time
+  else:
+    ls = 1
+  vertex_size = ls
   vertices[vertex] = U.newVertex(style=redSphere, label=vertex, size=vertex_size)
 
 ## Draw edges for parent/child relationship
-for vertex in actors_parent.keys():
-  if actors_parent[vertex] in vertices.keys():
-    vertex_id =  vertices[vertex]
-    parent_id = vertices[actors_parent[vertex]]
-    U.newEdge(parent_id, vertex_id, style=parentChildEdge)
+#for vertex in actors_parent.keys():
+#  if actors_parent[vertex] in vertices.keys():
+#    vertex_id =  vertices[vertex]
+#    parent_id = vertices[actors_parent[vertex]]
+#    U.newEdge(parent_id, vertex_id, style=parentChildEdge)
 
 ## Draw edges for messages exchanged
 for (sender, receiver) in edges:
-  width_ratio = math.log(edges[(sender, receiver)])# / float(vertex_num)
+  sth = math.log(edges[(sender, receiver)])# / float(vertex_num)
   sender_vertex = vertices[sender] 
   receiver_vertex = vertices[receiver]
-  U.newEdge(sender_vertex, receiver_vertex, style=wideEdge, width=width_ratio, strength=0.05)
+  U.newEdge(sender_vertex, receiver_vertex, style=wideEdge, width=1, strength=sth)
 
 print "Total number of vertices: %d" % len(vertices)
 print "Total number of edges: %d" % len(edges)
 
-#pp.pprint(vertices)

@@ -8,25 +8,15 @@ probe begin {
   start = gettimeofday_ns();
 }
 
-probe process("?BINDIR?/beam.smp").mark("message__send")
-{
-    if ($arg4 == 0 && $arg5 == 0 && $arg6 == 0) {
-        printf("send:   %s -> %s : %d words %d\n",
-	       user_string($arg1), user_string($arg2), $arg3, now() );
-    } else {
-        printf("send:   %s label %d token {%d,%d} -> %s: %d words\n",
-	       user_string($arg1),
-               $arg4, $arg5, $arg6,
-	       user_string($arg2), $arg3);
-    }
+probe process("?BINDIR?/beam.smp").mark("message__send") {
+  printf("s %s %s %d %d\n",
+    user_string($arg1), user_string($arg2), $arg3, now());    
 }
 
-probe process("?BINDIR?/beam.smp").mark("process__spawn")
-{
-    printf("spawn: %s parent is %s %d\n", user_string($arg1), user_string($arg3), now());
+probe process("?BINDIR?/beam.smp").mark("process__spawn") {
+    printf("p %s %s %d\n", user_string($arg1), user_string($arg3), now());
 }
 
-probe process("?BINDIR?/beam.smp").mark("process__exit")
-{
-    printf("exit: %s reason %s %d\n", user_string($arg1), user_string($arg2), now());
+probe process("?BINDIR?/beam.smp").mark("process__exit") {
+    printf("e %s %d\n", user_string($arg1), now());
 }
