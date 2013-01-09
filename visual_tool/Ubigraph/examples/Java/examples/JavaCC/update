@@ -1,2 +1,0 @@
-CLASSPATH=$CLASSPATH:../..:.  javac JavaParser.java 
-

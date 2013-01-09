@@ -1,3 +1,0 @@
-g++ diskuse.cpp -I../../include ../../UbigraphAPI.o -framework GLUT -framework OpenGL -L../../../../libubiety/ubiety -lubiety -o diskuse
-
-
