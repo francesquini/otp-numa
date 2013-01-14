@@ -8,13 +8,14 @@
 #include "erl_cpu_topology.h"
 #include "erl_mseg.h"
 
-
+char proc_mem_mem_alloc_policy = 0;
 char proc_mem_deffered = 0;
 char proc_mem_verbose = 0;
 
-void proc_mem_initialize(char deferred_allocation, char verbose) {
+void proc_mem_initialize(char memory_allocation_policy, char deferred_allocation, char verbose) {
 	ErtsCpuBindOrder order;
 
+	proc_mem_mem_alloc_policy = memory_allocation_policy;
 	proc_mem_deffered = deferred_allocation;
 	proc_mem_verbose = verbose;
 
@@ -23,7 +24,8 @@ void proc_mem_initialize(char deferred_allocation, char verbose) {
 		proc_mem_log("WARNING: Setting deferred allocation but schedulers are not bound\n");
 	}
 
-	proc_mem_log("Setting deferred memory allocation\n");
+	proc_mem_log("Setting deferred memory allocation %d memory allocation policy %d\n",
+			proc_mem_deffered, proc_mem_mem_alloc_policy);
 }
 
 static int mem_policy(void) {
@@ -44,7 +46,7 @@ static int mem_policy(void) {
 }
 
 void proc_mem_bind (int scheduler, int cpu) {
-	if (proc_mem_deffered) {
+	if (proc_mem_mem_alloc_policy) {
 		int node;
 		unsigned long mask;
 

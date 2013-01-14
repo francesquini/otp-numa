@@ -13,7 +13,7 @@ extern char proc_mem_deffered;
  ****************************************************
  ****************************************************/
 
-void proc_mem_initialize(char deferred_allocation, char verbose);
+void proc_mem_initialize(char memory_allocation_policy, char deferred_allocation, char verbose);
 void proc_mem_bind (int scheduler, int cpu);
 
 
