@@ -1,28 +1,43 @@
+#!/usr/bin/env python
+
 import pprint
 import re
 import xmlrpclib
 import sys
 import math
-
 import ubigraph
+
 U = ubigraph.Ubigraph()
 U.clear()
 
 redSphere = U.newVertexStyle(shape="sphere", color="#ff0000")
-wideEdge = U.newEdgeStyle(color="#8888ff", stroke="solid")#, spline=True)
+wideEdge = U.newEdgeStyle(color="#ffffff", stroke="solid")#, spline=True)
 parentChildEdge = U.newEdgeStyle(color="#0099ff", arrow=True,
     arrow_position=1.0, stroke="dashed")
-#parentChildEdge = U.newEdgeStyle(color="#0099ff", arrow=True,
-#    arrow_position=0.5, arrow_length=15.0, arrow_radius=13.0, spline=True, 
-#    stroke="dashed", width=3.0)
+
 
 pp = pprint.PrettyPrinter(indent=4)
+ubivertices = {}
 vertices = {}
 edges = {}
 actors_birth = {}
 actors_lifespan = {}
 actors_parent = {}
 vertex_num = 0
+
+
+def drawVertexIfNeeded(vertexName):
+  if vertexName in ubivertices:
+    return ubivertices[vertexName]
+  else:
+    if vertexName in actors_lifespan:
+      ls = actors_lifespan[vertexName] / total_exec_time
+    else:
+      ls = 1
+    vertex = U.newVertex(style=redSphere, label=vertexName, size=ls)
+    ubivertices[vertexName] = vertex
+    return vertex
+
 
 if len(sys.argv) == 1:
   print "Please specify the name of SystemTap generated file from\
@@ -50,26 +65,30 @@ for line in all_lines:
       if tokens[2] in vertices:
         sender = tokens[1]
         receiver = tokens[2]
+	if tokens[3] == "0":
+	  msg_size = 1
+	else:
+          msg_size = float(int(tokens[3]))
         if (sender, receiver) in edges:
-          edges[(sender, receiver)] += int(tokens[3])
+          edges[(sender, receiver)] += msg_size
         else:
-          edges[(sender, receiver)] = int(tokens[3])
+          edges[(sender, receiver)] = msg_size
   elif tokens[0] == "e": #exit
     if tokens[1] in vertices:
       actors_lifespan[tokens[1]] = float(tokens[-1]) - actors_birth[tokens[1]]
 
 
 ## Draw vertices
-for vertex in vertices.keys():
+#for vertex in vertices.keys():
 #  if vertex not in actors_lifespan.keys():
 #    print "hey, what about me: %s?" % vertex
 #    actors_lifespan[vertex] = parent_exit_time - actors_birth[vertex]
-  if vertex in actors_lifespan:
-    ls = actors_lifespan[vertex] / total_exec_time
-  else:
-    ls = 1
-  vertex_size = ls
-  vertices[vertex] = U.newVertex(style=redSphere, label=vertex, size=vertex_size)
+#  if vertex in actors_lifespan:
+#    ls = actors_lifespan[vertex] / total_exec_time
+#  else:
+#    ls = 1
+#  vertex_size = ls
+#  vertices[vertex] = U.newVertex(style=redSphere, label=vertex, size=vertex_size)
 
 ## Draw edges for parent/child relationship
 #for vertex in actors_parent.keys():
@@ -80,10 +99,11 @@ for vertex in vertices.keys():
 
 ## Draw edges for messages exchanged
 for (sender, receiver) in edges:
-  sth = math.log(edges[(sender, receiver)])# / float(vertex_num)
-  sender_vertex = vertices[sender] 
-  receiver_vertex = vertices[receiver]
-  U.newEdge(sender_vertex, receiver_vertex, style=wideEdge, width=1, strength=sth)
+  if edges[(sender, receiver)] > 100:
+    sth = math.log(edges[(sender, receiver)])
+    sender_vertex = drawVertexIfNeeded(sender)
+    receiver_vertex = drawVertexIfNeeded(receiver)
+    U.newEdge(sender_vertex, receiver_vertex, style=wideEdge, width=1, strength=sth)
 
 print "Total number of vertices: %d" % len(vertices)
 print "Total number of edges: %d" % len(edges)
