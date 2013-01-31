@@ -1,0 +1,8 @@
+#!/bin/bash
+
+DIR=`dirname $0`
+DIR=$(readlink -f $DIR)
+ERL_RUN=$DIR/erl_run
+
+$ERL_RUN -noshell -pa $DIR/bench_explained $DIR/bench_explained/orbit_int $DIR/bench_explained/dialyzer/data/ +P 1000000 -s $* -s init stop
+
