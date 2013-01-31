@@ -345,6 +345,7 @@ provider erlang {
     probe scheduler__check_balance(int balancing_scheduler);
     probe scheduler__work_stealing(int stealer_scheduler);
 
+    probe scheduler__sent_messages(int from, int to, long long msgs);
 
     /* network distribution */
 

@@ -3132,6 +3132,9 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 	for (ix = 0; ix < n; ix++) {
 		ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(ix);
 #ifdef ERTS_SMP
+
+		esdp->messages_sent = calloc(n, sizeof (unsigned long long));
+
 		erts_bits_init_state(&esdp->erl_bits_state);
 		esdp->match_pseudo_process = NULL;
 		esdp->free_process = NULL;

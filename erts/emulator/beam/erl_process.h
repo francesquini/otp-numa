@@ -550,6 +550,11 @@ struct ErtsSchedulerData_ {
     erts_alloc_verify_func_t verify_unused_temp_alloc;
     Allctr_t *verify_unused_temp_alloc_data;
 #endif
+
+#ifdef ERTS_SMP
+    unsigned long long *messages_sent;
+#endif
+
 };
 
 typedef union {

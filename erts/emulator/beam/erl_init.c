@@ -1520,6 +1520,20 @@ erl_exit_vv(int n, int flush_async, char *fmt, va_list args1, va_list args2)
 {
     unsigned int an;
 
+#ifdef ERTS_SMP
+#ifdef USE_VM_PROBES
+    int i, j;
+    char buffer[256];
+    for (i = 0; i < no_schedulers; i++) {
+    	ErtsSchedulerData *esdp = ERTS_SCHEDULER_IX(i);
+    	for (j = 0; j < no_schedulers; j++) {
+    		sprintf(buffer, "%llu", esdp->messages_sent[j]);
+    		DTRACE3(scheduler_sent_messages, i, j, buffer);
+    	}
+    }
+#endif
+#endif
+
     system_cleanup(flush_async);
 
     save_statistics();

@@ -895,6 +895,12 @@ erts_send_message(Process* sender,
     Sint tok_lastcnt = 0;
     Sint tok_serial = 0;
 #endif
+
+#ifdef ERTS_SMP
+    unsigned long long* ms = sender->scheduler_data->messages_sent;
+    ms[receiver->run_queue->ix]++;
+#endif
+
     BM_STOP_TIMER(system);
     BM_MESSAGE(message,sender,receiver);
     BM_START_TIMER(send);

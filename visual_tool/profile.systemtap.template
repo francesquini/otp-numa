@@ -20,3 +20,7 @@ probe process("?BINDIR?/beam.smp").mark("process__spawn") {
 probe process("?BINDIR?/beam.smp").mark("process__exit") {
     printf("e %s %d\n", user_string($arg1), now());
 }
+
+probe process("?BINDIR?/beam.smp").mark("scheduler__sent_messages") {
+    printf("ssm %d %d %s %d\n", $arg1, $arg2, user_string($arg3), now());
+}
