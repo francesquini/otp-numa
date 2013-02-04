@@ -6876,7 +6876,7 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
     dtrace_proc_str(parent, parent_name);
 
     dtrace_fun_decode(p, mod, func, arity, process_name, mfa);
-    DTRACE3(process_spawn, process_name, mfa, parent_name);
+    DTRACE4(process_spawn, process_name, mfa, parent_name, sched_getcpu());
 	}
 #endif
 

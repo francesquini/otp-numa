@@ -14,7 +14,7 @@ probe process("?BINDIR?/beam.smp").mark("message__send") {
 }
 
 probe process("?BINDIR?/beam.smp").mark("process__spawn") {
-    printf("p %s %s %d\n", user_string($arg1), user_string($arg3), now());
+    printf("p %s %s %s %d %d\n", user_string($arg1), user_string($arg2), user_string($arg3), $arg4, now());
 }
 
 probe process("?BINDIR?/beam.smp").mark("process__exit") {
