@@ -908,8 +908,13 @@ erts_send_message(Process* sender,
  #ifdef USE_VM_PROBES
     *sender_name = *receiver_name = '\0';
    if (DTRACE_ENABLED(message_send)) {
-        erts_snprintf(sender_name, sizeof(DTRACE_CHARBUF_NAME(sender_name)), "%T", sender->id);
-        erts_snprintf(receiver_name, sizeof(DTRACE_CHARBUF_NAME(receiver_name)), "%T", receiver->id);
+#ifdef ERTS_SMP
+	   erts_snprintf(sender_name, sizeof(DTRACE_CHARBUF_NAME(sender_name)), "%T %beu", sender->id, sender->run_queue->ix);
+       erts_snprintf(receiver_name, sizeof(DTRACE_CHARBUF_NAME(receiver_name)), "%T %beu", receiver->id, receiver->run_queue->ix);
+#else
+	   erts_snprintf(sender_name, sizeof(DTRACE_CHARBUF_NAME(sender_name)), "%T 0", sender->id);
+       erts_snprintf(receiver_name, sizeof(DTRACE_CHARBUF_NAME(receiver_name)), "%T %0", receiver->id);
+#endif
     }
 #endif
     if (SEQ_TRACE_TOKEN(sender) != NIL && !(flags & ERTS_SND_FLG_NO_SEQ_TRACE)) {
