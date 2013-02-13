@@ -13,4 +13,9 @@ LBINDIR=`grep BINDIR= $DIR/../bin/erl`
 LBINDIR=$DIR/../${LBINDIR:16}
 sed "s%?BINDIR?%$LBINDIR%g" $DIR/profile.systemtap.template > $DIR/profile.systemtap
 
-stap $DIR/profile.systemtap -o traces/$1 -c "$ERL_RUN ${*:2}"
+stap $DIR/profile.systemtap -b -s32 -o traces/$1 -c "$ERL_RUN ${*:2}"
+stap-merge traces/$1_* -o traces/_$1_full
+rm traces/$1_*
+mv traces/_$1_full traces/$1
+
+
