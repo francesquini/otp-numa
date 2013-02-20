@@ -78,3 +78,11 @@ int proc_mem_log(char *fmt, ...) {
 	return r;
 }
 
+unsigned int proc_mem_state(void) {
+	unsigned int ret = 0;
+	ret |= proc_mem_mem_alloc_policy 	? 1 : 0;
+	ret |= proc_mem_deffered 			? 2 : 0;
+	ret |= proc_mem_verbose 			? 4 : 0;
+	return ret;
+}
+

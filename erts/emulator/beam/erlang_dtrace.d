@@ -246,7 +246,7 @@ provider erlang {
      * @param p the PID (string form) of the new process.
      * @param mfa the m:f/a of the function
      */
-    probe process__spawn(char *p, char *mfa, char *parent, int spawnerRQ);
+    probe process__spawn(char *p, char *mfa, char *args, int hub, char *parent, int spawnerRQ);
 
     /**
      * Fired when a process is exiting.

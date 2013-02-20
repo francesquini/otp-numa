@@ -54,6 +54,7 @@
 #endif
 
 #include "erl_process_sched.h"
+#include "erl_process_mem.h"
 
 static Export* alloc_info_trap = NULL;
 static Export* alloc_sizes_trap = NULL;
@@ -2708,6 +2709,8 @@ BIF_RET(make_small(n));
 		BIF_RET(make_small(hub_processes_count()));
 	} else if (ERTS_IS_ATOM_STR("scheduler_hubs_only", BIF_ARG_1)) {
 		BIF_RET(proc_sched_hubs_only() ? am_true : am_false);
+	} else if (ERTS_IS_ATOM_STR("proc_mem_state", BIF_ARG_1)) {
+		BIF_RET(make_small(proc_mem_state()));
 	}
 #endif
 	BIF_ERROR(BIF_P, BADARG);
