@@ -157,24 +157,14 @@ static int *proc_sched_ip_scatter_list;
 
 static ERTS_INLINE void proc_sched_ip_scatter_initialize(void) {
 	if (proc_sched_ip_scatter_next == -1) {
-		erts_cpu_topology_t *cpudata;
-	    int i;
-	 
-	    
-		cpudata = get_cpu_data(&proc_sched_ip_scatter_size);
-		
-		cpu_bind_order_sort(cpudata, proc_sched_ip_scatter_size, ERTS_CPU_BIND_SPREAD, 0);
-		
-		proc_sched_ip_scatter_list = malloc(sizeof(int) * proc_sched_ip_scatter_size);
-	    printf("\nScatter Strategy Initialization: ");
-	    for (i = 0; i < proc_sched_ip_scatter_size; i++) {
-	    	proc_sched_ip_scatter_list[i] = cpudata[i].logical;
-	    	printf("%d ", cpudata[i].logical);
-	    }
-	    printf("\n");
-	    
-	    erts_free(ERTS_ALC_T_TMP, cpudata);
-	    
+		int i;
+		erts_cpu_topology_t *cpudata;	    
+		cpudata = get_cpu_data(&proc_sched_ip_scatter_size);		
+		cpu_bind_order_sort(cpudata, proc_sched_ip_scatter_size, ERTS_CPU_BIND_SPREAD, 0);		
+		proc_sched_ip_scatter_list = malloc(sizeof(int) * proc_sched_ip_scatter_size);	    
+	    for (i = 0; i < proc_sched_ip_scatter_size; i++)
+	    	proc_sched_ip_scatter_list[i] = cpudata[i].logical;	    
+	    erts_free(ERTS_ALC_T_TMP, cpudata);	    
 	    proc_sched_ip_scatter_next = 0;
 	    proc_sched_scatter_lock = 0;
 	}
@@ -216,20 +206,14 @@ static int *proc_sched_ip_compact_list;
 
 static ERTS_INLINE void proc_sched_ip_compact_initialize(void) {
 	if (proc_sched_ip_compact_next == -1) {
+		int i;
 		erts_cpu_topology_t *cpudata;
-	    int i;
 		cpudata = get_cpu_data(&proc_sched_ip_compact_size);	    
 		cpu_bind_order_sort(cpudata, proc_sched_ip_compact_size, ERTS_CPU_BIND_NO_SPREAD, 1);
 		proc_sched_ip_compact_list = malloc(sizeof(int) * proc_sched_ip_compact_size);
-	    printf("\nCompact Strategy Initialization: ");
-	    for (i = 0; i < proc_sched_ip_compact_size; i++) {
+	    for (i = 0; i < proc_sched_ip_compact_size; i++)
 	    	proc_sched_ip_compact_list[i] = cpudata[i].logical;
-	    	printf("%d ", cpudata[i].logical);
-	    }
-	    printf("\n");
-
 	    erts_free(ERTS_ALC_T_TMP, cpudata);
-	    
 	    proc_sched_ip_compact_next = 0;
 	    proc_sched_compact_lock = 0;
 	}
