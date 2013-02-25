@@ -6,6 +6,7 @@
 
 #include "erl_process_sched_ip.h"
 #include "erl_process_sched.h"
+#include "erl_cpu_topology.h"
 
 /*This file contains the implementation of the initial placement strategies*/
 
@@ -136,5 +137,122 @@ ErtsRunQueue* proc_sched_ip_local_circular(Process* process, Process* parent) {
 	} else {
 		return proc_sched_ip_default(process, parent);
 	}
+}
+
+
+/***************************
+ ***************************
+ * Scatter
+ ***************************
+ ***************************/
+
+
+#ifdef ERTS_SMP
+
+volatile static byte proc_sched_scatter_lock = 0;
+static int proc_sched_ip_scatter_size = -1;
+static int proc_sched_ip_scatter_next = -1;
+static int *proc_sched_ip_scatter_list;
+ 
+
+static ERTS_INLINE void proc_sched_ip_scatter_initialize(void) {
+	if (proc_sched_ip_scatter_next == -1) {
+		erts_cpu_topology_t *cpudata;
+	    int i;
+	 
+	    
+		cpudata = get_cpu_data(&proc_sched_ip_scatter_size);
+		
+		cpu_bind_order_sort(cpudata, proc_sched_ip_scatter_size, ERTS_CPU_BIND_SPREAD, 0);
+		
+		proc_sched_ip_scatter_list = malloc(sizeof(int) * proc_sched_ip_scatter_size);
+	    printf("\nScatter Strategy Initialization: ");
+	    for (i = 0; i < proc_sched_ip_scatter_size; i++) {
+	    	proc_sched_ip_scatter_list[i] = cpudata[i].logical;
+	    	printf("%d ", cpudata[i].logical);
+	    }
+	    printf("\n");
+	    
+	    erts_free(ERTS_ALC_T_TMP, cpudata);
+	    
+	    proc_sched_ip_scatter_next = 0;
+	    proc_sched_scatter_lock = 0;
+	}
+}
+
+#endif
+
+ErtsRunQueue* proc_sched_ip_scatter(Process* process, Process* parent) {
+#ifdef ERTS_SMP	
+	if (!proc_sched_hubs_only() || process->hub) {
+		int ret;		
+		while (!__sync_bool_compare_and_swap (&proc_sched_scatter_lock, 0, 1));
+		proc_sched_ip_scatter_initialize();
+		ret = proc_sched_ip_scatter_list[proc_sched_ip_scatter_next];
+		proc_sched_ip_scatter_next = (proc_sched_ip_scatter_next + 1) % proc_sched_ip_scatter_size;
+		proc_sched_scatter_lock = 0;
+		return ERTS_RUNQ_IX(ret);
+	} else {
+#endif
+		return proc_sched_ip_default(process, parent);
+#ifdef ERTS_SMP		
+	}
+#endif	
+}
+
+
+/***************************
+ ***************************
+ * Compact
+ ***************************
+ ***************************/
+
+#ifdef ERTS_SMP
+
+volatile static byte proc_sched_compact_lock = 0;
+static int proc_sched_ip_compact_size = -1;
+static int proc_sched_ip_compact_next = -1;
+static int *proc_sched_ip_compact_list;
+
+static ERTS_INLINE void proc_sched_ip_compact_initialize(void) {
+	if (proc_sched_ip_compact_next == -1) {
+		erts_cpu_topology_t *cpudata;
+	    int i;
+		cpudata = get_cpu_data(&proc_sched_ip_compact_size);	    
+		cpu_bind_order_sort(cpudata, proc_sched_ip_compact_size, ERTS_CPU_BIND_NO_SPREAD, 1);
+		proc_sched_ip_compact_list = malloc(sizeof(int) * proc_sched_ip_compact_size);
+	    printf("\nCompact Strategy Initialization: ");
+	    for (i = 0; i < proc_sched_ip_compact_size; i++) {
+	    	proc_sched_ip_compact_list[i] = cpudata[i].logical;
+	    	printf("%d ", cpudata[i].logical);
+	    }
+	    printf("\n");
+
+	    erts_free(ERTS_ALC_T_TMP, cpudata);
+	    
+	    proc_sched_ip_compact_next = 0;
+	    proc_sched_compact_lock = 0;
+	}
+}
+
+#endif
+
+
+ErtsRunQueue* proc_sched_ip_compact(Process* process, Process* parent) {
+#ifdef ERTS_SMP
+	if (!proc_sched_hubs_only() || process->hub) {
+		int ret;		
+		while (!__sync_bool_compare_and_swap (&proc_sched_compact_lock, 0, 1));
+		proc_sched_ip_compact_initialize();
+		ret = proc_sched_ip_compact_list[proc_sched_ip_compact_next];
+		proc_sched_ip_compact_next = (proc_sched_ip_compact_next + 1) % proc_sched_ip_compact_size;
+		proc_sched_compact_lock = 0;
+		return ERTS_RUNQ_IX(ret);
+	} else {
+#endif		
+		return proc_sched_ip_default(process, parent);
+#ifdef ERTS_SMP		
+	}
+#endif
 }
 

@@ -17,4 +17,10 @@ ErtsRunQueue* proc_sched_ip_simple_random(Process* process, Process* parent);
 ErtsRunQueue* proc_sched_ip_circular(Process* process, Process* parent);
 ErtsRunQueue* proc_sched_ip_local_circular(Process* process, Process* parent);
 
+//scatter
+ErtsRunQueue* proc_sched_ip_scatter(Process* process, Process* parent);
+
+//compact
+ErtsRunQueue* proc_sched_ip_compact(Process* process, Process* parent);
+
 #endif

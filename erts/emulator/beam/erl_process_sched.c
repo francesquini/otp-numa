@@ -52,17 +52,20 @@ static Uint SCHEDULED_IP_CHANGEMENT;
 static byte SCHEDULED_IP_STRATEGY;
 
 static byte PROC_SCHED_CURRENT_IP_STRATEGY;
-static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[5])(Process*, Process*);
+static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[7])(Process*, Process*);
 
 ERTS_INLINE static void proc_sched_ip_initialize(void) {
 
 	SCHEDULED_IP_CHANGEMENT = INT_MAX;
 
+	//DON'T FORGET TO CHANGE THE ARRAY SIZE!!! 
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_DEFAULT] = &proc_sched_ip_default; //0
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_RANDOM] = &proc_sched_ip_random;  //1
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_CIRCULAR] = &proc_sched_ip_circular; //2
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_SIMPLE_RANDOM] = &proc_sched_ip_simple_random; //3
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_LOCAL_CIRCULAR] = &proc_sched_ip_local_circular; //4
+	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_SCATTER] = &proc_sched_ip_scatter; //5
+	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_COMPACT] = &proc_sched_ip_compact; //6
 
 	internal_proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT);
 }

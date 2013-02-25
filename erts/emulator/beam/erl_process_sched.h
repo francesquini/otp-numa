@@ -29,7 +29,9 @@ typedef enum enum_proc_sched_ip_strategy {
 	PROC_SCHED_IP_RANDOM = 1,
 	PROC_SCHED_IP_CIRCULAR = 2,
 	PROC_SCHED_IP_SIMPLE_RANDOM = 3,
-	PROC_SCHED_IP_LOCAL_CIRCULAR = 4
+	PROC_SCHED_IP_LOCAL_CIRCULAR = 4,
+	PROC_SCHED_IP_SCATTER = 5,
+	PROC_SCHED_IP_COMPACT = 6
 } proc_sched_ip_strategy;
 
 void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);

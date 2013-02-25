@@ -85,10 +85,12 @@ typedef struct {
     int cpu_groups;
 } erts_cpu_groups_count_t;
 
+
 typedef struct {
     int logical;
     int cpu_group;
 } erts_cpu_groups_map_array_t;
+
 
 typedef struct erts_cpu_groups_callback_list_t_ erts_cpu_groups_callback_list_t;
 struct erts_cpu_groups_callback_list_t_ {
@@ -122,10 +124,6 @@ static erts_cpu_groups_map_t *reader_groups_map;
 #define ERTS_MAX_CPU_TOPOLOGY_ID ((int) 0xffff)
 
 #ifdef ERTS_SMP
-static void cpu_bind_order_sort(erts_cpu_topology_t *cpudata,
-                                int size,
-                                ErtsCpuBindOrder bind_order,
-                                int mk_seq);
 static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size);
 #endif
 
@@ -137,10 +135,6 @@ static void update_cpu_groups_maps(void);
 static void make_cpu_groups_map(erts_cpu_groups_map_t *map, int test);
 static int cpu_groups_lookup(erts_cpu_groups_map_t *map,
                              ErtsSchedulerData *esdp);
-
-static void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata,
-                                         int *cpudata_size);
-static void destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata);
 
 static int
 int_cmp(const void *vx, const void *vy)
@@ -356,8 +350,7 @@ make_cpudata_id_seq(erts_cpu_topology_t *cpudata, int size, int no_node)
     }
 }
 
-static void
-cpu_bind_order_sort(erts_cpu_topology_t *cpudata,
+void cpu_bind_order_sort(erts_cpu_topology_t *cpudata,
                     int size,
                     ErtsCpuBindOrder bind_order,
                     int mk_seq)
@@ -1480,9 +1473,8 @@ erts_set_cpu_topology(Process *c_p, Eterm term)
     return res;
 }
 
-static void
-create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size)
-{
+
+void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size) {
     if (user_cpudata) {
         *cpudata_size = user_cpudata_size;
         *cpudata = erts_alloc(ERTS_ALC_T_TMP,
@@ -1507,9 +1499,8 @@ create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size)
     }
 }
 
-static void
-destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata)
-{
+
+void destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata) {
     if (cpudata)
         erts_free(ERTS_ALC_T_TMP, cpudata);
 }
@@ -1544,6 +1535,37 @@ bld_topology_term(Eterm **hpp,
     }
     return res;
 }
+
+//returns size
+erts_cpu_topology_t * get_cpu_data(int *size) {
+    erts_cpu_topology_t *cpudata;
+    erts_smp_rwmtx_rlock(&cpuinfo_rwmtx);
+    *size = -1;    
+    if (user_cpudata) {        
+        *size = user_cpudata_size;
+        cpudata = erts_alloc(ERTS_ALC_T_TMP,
+                                 (sizeof(erts_cpu_topology_t)
+                                  * user_cpudata_size));
+        sys_memcpy((void *) cpudata,
+                       (void *) user_cpudata,
+                       sizeof(erts_cpu_topology_t) * user_cpudata_size);
+    } else {
+        if (!system_cpudata)
+            cpudata = NULL;
+        else {
+            *size = system_cpudata_size;
+            cpudata = erts_alloc(ERTS_ALC_T_TMP,
+                                 (sizeof(erts_cpu_topology_t)
+                                  * system_cpudata_size));
+            sys_memcpy((void *) cpudata,
+                       (void *) system_cpudata,
+                       sizeof(erts_cpu_topology_t)* system_cpudata_size);
+        }
+    }
+    erts_smp_rwmtx_runlock(&cpuinfo_rwmtx);
+    return cpudata;
+}
+
 
 static Eterm
 get_cpu_topology_term(Process *c_p, int type)
