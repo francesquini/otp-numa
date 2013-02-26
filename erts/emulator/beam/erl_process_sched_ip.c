@@ -239,4 +239,3 @@ ErtsRunQueue* proc_sched_ip_compact(Process* process, Process* parent) {
 	}
 #endif
 }
-

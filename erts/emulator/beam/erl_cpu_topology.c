@@ -85,12 +85,10 @@ typedef struct {
     int cpu_groups;
 } erts_cpu_groups_count_t;
 
-
 typedef struct {
     int logical;
     int cpu_group;
 } erts_cpu_groups_map_array_t;
-
 
 typedef struct erts_cpu_groups_callback_list_t_ erts_cpu_groups_callback_list_t;
 struct erts_cpu_groups_callback_list_t_ {
@@ -135,6 +133,10 @@ static void update_cpu_groups_maps(void);
 static void make_cpu_groups_map(erts_cpu_groups_map_t *map, int test);
 static int cpu_groups_lookup(erts_cpu_groups_map_t *map,
                              ErtsSchedulerData *esdp);
+
+static void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, 
+                                int *cpudata_size);
+static void destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata);
 
 static int
 int_cmp(const void *vx, const void *vy)
@@ -1473,8 +1475,9 @@ erts_set_cpu_topology(Process *c_p, Eterm term)
     return res;
 }
 
-
-void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size) {
+static void
+create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size)
+{
     if (user_cpudata) {
         *cpudata_size = user_cpudata_size;
         *cpudata = erts_alloc(ERTS_ALC_T_TMP,
@@ -1499,8 +1502,9 @@ void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_si
     }
 }
 
-
-void destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata) {
+static void
+destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata)
+{
     if (cpudata)
         erts_free(ERTS_ALC_T_TMP, cpudata);
 }

@@ -84,8 +84,6 @@ void erts_sched_check_cpu_bind_post_suspend(ErtsSchedulerData *esdp);
 int erts_update_cpu_info(void);
 
 void cpu_bind_order_sort(erts_cpu_topology_t *cpudata, int size, ErtsCpuBindOrder bind_order, int mk_seq);
-void create_tmp_cpu_topology_copy(erts_cpu_topology_t **cpudata, int *cpudata_size);
-void destroy_tmp_cpu_topology_copy(erts_cpu_topology_t *cpudata);
 
 erts_cpu_topology_t* get_cpu_data(int *cpudata);
 
