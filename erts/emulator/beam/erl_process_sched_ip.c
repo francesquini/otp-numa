@@ -157,15 +157,18 @@ static int *proc_sched_ip_scatter_list;
 
 static ERTS_INLINE void proc_sched_ip_scatter_initialize(void) {
 	if (proc_sched_ip_scatter_next == -1) {
-		int i;
-		erts_cpu_topology_t *cpudata;	    
-		cpudata = get_cpu_data(&proc_sched_ip_scatter_size);		
-		cpu_bind_order_sort(cpudata, proc_sched_ip_scatter_size, ERTS_CPU_BIND_SPREAD, 0);		
-		proc_sched_ip_scatter_list = malloc(sizeof(int) * proc_sched_ip_scatter_size);	    
-	    for (i = 0; i < proc_sched_ip_scatter_size; i++)
-	    	proc_sched_ip_scatter_list[i] = cpudata[i].logical;	    
-	    erts_free(ERTS_ALC_T_TMP, cpudata);	    
-	    proc_sched_ip_scatter_next = 0;
+		while (!__sync_bool_compare_and_swap (&proc_sched_scatter_lock, 0, 1));
+		if (proc_sched_ip_scatter_next == -1) { //someone already initialized it
+			int i;
+			erts_cpu_topology_t *cpudata;	    
+			cpudata = get_cpu_data(&proc_sched_ip_scatter_size);		
+			cpu_bind_order_sort(cpudata, proc_sched_ip_scatter_size, ERTS_CPU_BIND_SPREAD, 0);		
+			proc_sched_ip_scatter_list = malloc(sizeof(int) * proc_sched_ip_scatter_size);	    
+		    for (i = 0; i < proc_sched_ip_scatter_size; i++)
+		    	proc_sched_ip_scatter_list[i] = cpudata[i].logical;	    
+		    erts_free(ERTS_ALC_T_TMP, cpudata);	    
+		    proc_sched_ip_scatter_next = 0;
+		}
 	    proc_sched_scatter_lock = 0;
 	}
 }
@@ -175,13 +178,10 @@ static ERTS_INLINE void proc_sched_ip_scatter_initialize(void) {
 ErtsRunQueue* proc_sched_ip_scatter(Process* process, Process* parent) {
 #ifdef ERTS_SMP	
 	if (!proc_sched_hubs_only() || process->hub) {
-		int ret;		
-		while (!__sync_bool_compare_and_swap (&proc_sched_scatter_lock, 0, 1));
+		int next;
 		proc_sched_ip_scatter_initialize();
-		ret = proc_sched_ip_scatter_list[proc_sched_ip_scatter_next];
-		proc_sched_ip_scatter_next = (proc_sched_ip_scatter_next + 1) % proc_sched_ip_scatter_size;
-		proc_sched_scatter_lock = 0;
-		return ERTS_RUNQ_IX(ret);
+		next = __sync_fetch_and_add(&proc_sched_ip_scatter_next, 1) % proc_sched_ip_scatter_size;		
+		return ERTS_RUNQ_IX(proc_sched_ip_scatter_list[next]);
 	} else {
 #endif
 		return proc_sched_ip_default(process, parent);
@@ -206,16 +206,19 @@ static int *proc_sched_ip_compact_list;
 
 static ERTS_INLINE void proc_sched_ip_compact_initialize(void) {
 	if (proc_sched_ip_compact_next == -1) {
-		int i;
-		erts_cpu_topology_t *cpudata;
-		cpudata = get_cpu_data(&proc_sched_ip_compact_size);	    
-		cpu_bind_order_sort(cpudata, proc_sched_ip_compact_size, ERTS_CPU_BIND_NO_SPREAD, 1);
-		proc_sched_ip_compact_list = malloc(sizeof(int) * proc_sched_ip_compact_size);
-	    for (i = 0; i < proc_sched_ip_compact_size; i++)
-	    	proc_sched_ip_compact_list[i] = cpudata[i].logical;
-	    erts_free(ERTS_ALC_T_TMP, cpudata);
-	    proc_sched_ip_compact_next = 0;
-	    proc_sched_compact_lock = 0;
+		while (!__sync_bool_compare_and_swap (&proc_sched_compact_lock, 0, 1));
+		if (proc_sched_ip_compact_next == -1) {
+			int i;
+			erts_cpu_topology_t *cpudata;
+			cpudata = get_cpu_data(&proc_sched_ip_compact_size);	    
+			cpu_bind_order_sort(cpudata, proc_sched_ip_compact_size, ERTS_CPU_BIND_NO_SPREAD, 1);
+			proc_sched_ip_compact_list = malloc(sizeof(int) * proc_sched_ip_compact_size);
+		    for (i = 0; i < proc_sched_ip_compact_size; i++)
+		    	proc_sched_ip_compact_list[i] = cpudata[i].logical;
+		    erts_free(ERTS_ALC_T_TMP, cpudata);
+		    proc_sched_ip_compact_next = 0;
+		}
+		proc_sched_compact_lock = 0;
 	}
 }
 
@@ -225,13 +228,10 @@ static ERTS_INLINE void proc_sched_ip_compact_initialize(void) {
 ErtsRunQueue* proc_sched_ip_compact(Process* process, Process* parent) {
 #ifdef ERTS_SMP
 	if (!proc_sched_hubs_only() || process->hub) {
-		int ret;		
-		while (!__sync_bool_compare_and_swap (&proc_sched_compact_lock, 0, 1));
+		int next;		
 		proc_sched_ip_compact_initialize();
-		ret = proc_sched_ip_compact_list[proc_sched_ip_compact_next];
-		proc_sched_ip_compact_next = (proc_sched_ip_compact_next + 1) % proc_sched_ip_compact_size;
-		proc_sched_compact_lock = 0;
-		return ERTS_RUNQ_IX(ret);
+		next = __sync_fetch_and_add(&proc_sched_ip_compact_next, 1) % proc_sched_ip_compact_size; 
+		return ERTS_RUNQ_IX(proc_sched_ip_compact_list[next]);
 	} else {
 #endif		
 		return proc_sched_ip_default(process, parent);
