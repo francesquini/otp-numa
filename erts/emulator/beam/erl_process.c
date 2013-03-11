@@ -2995,7 +2995,7 @@ init_aux_work_data(ErtsAuxWorkData *awdp, ErtsSchedulerData *esdp, char *dawwp)
 void
 erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 {
-	int ix, n, no_ssi;
+	int ix, n, no_ssi, tmp, numa_nodes;
 	char *daww_ptr;
 #ifdef ERTS_SMP
 	size_t daww_sz;
@@ -3020,6 +3020,7 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 #endif
 
 	erts_no_run_queues = n;
+    numa_nodes = erts_get_max_numa_node() + 1;
 
 	for (ix = 0; ix < n; ix++) {
 		int pix, rix;
@@ -3082,6 +3083,16 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 		rq->ports.info.migrate.runq = NULL;
 		rq->ports.start = NULL;
 		rq->ports.end = NULL;
+
+        rq->run_queues_by_distance_size = 0;
+        rq->foreign_process_list_head = malloc(sizeof(ProcessLinkedList*) * numa_nodes);
+        for (tmp = 0; tmp < numa_nodes; tmp++) {
+            rq->foreign_process_list_head[tmp] = malloc(sizeof(ProcessLinkedList));
+            rq->foreign_process_list_head[tmp]->p = NULL;
+            rq->foreign_process_list_head[tmp]->next = NULL;
+            rq->foreign_process_list_head[tmp]->prev = NULL;
+        }
+
 	}
 
 	proc_sched_initialize(erts_no_run_queues, no_schedulers, no_schedulers_online);
@@ -5055,9 +5066,19 @@ check_procs_runq(ErtsRunQueue *runq, Process *p_in_q, Process *p_not_in_q)
 #endif
 
 
+ProcessLinkedList* process_linked_list_insert_after(Process* p, ProcessLinkedList* cell) {
+    ProcessLinkedList *new_cell = malloc(sizeof(ProcessLinkedList));
+    new_cell->p = p;
+    new_cell->next = cell->next;
+    new_cell->prev = cell;
+    if (cell->next)
+        cell->next->prev = new_cell;
+    cell->next = new_cell;
+    return new_cell;
+}
+
 static ERTS_INLINE void
-enqueue_process(ErtsRunQueue *runq, Process *p)
-{
+enqueue_process(ErtsRunQueue *runq, Process *p) {
     ErtsRunPrioQueue *rpq;
     ErtsRunQueueInfo *rqi;
 
@@ -5089,6 +5110,23 @@ enqueue_process(ErtsRunQueue *runq, Process *p)
     else
 	rpq->first = p;
     rpq->last = p;
+
+#ifdef ERTS_SMP
+    if (p->home_numa_node != runq->numa_node) {
+        ProcessLinkedList *head, *cell;
+        if (p->foreign_node) {
+            printf("Enqueuing a foreign process before dequeueing");
+            exit(1);
+        }
+printf("A1 Proc %d Rq %d \n", p->home_numa_node, runq->numa_node);
+fflush(stdout);
+        head = runq->foreign_process_list_head[p->home_numa_node];
+        cell = process_linked_list_insert_after (p, head);
+        p->foreign_node = cell;
+printf("A2\n");
+fflush(stdout);        
+    }    
+#endif    
 
     switch (p->status) {
     case P_EXITING:
@@ -6062,22 +6100,18 @@ ERTS_GLB_INLINE Process* schedule_check_activities_to_run (Process *p, schedulin
 			//First time this process is scheduled.
 			//We should copy the heap to the local NUMA node
 			int current_node;
-			current_node = erts_get_scheduler_numa_node(sd->rq->ix + 1);
-			if (current_node == -1) {
-				proc_mem_log("Scheduler not yet bound, heap copy postponed until next scheduling");
-			} else {
-				if (current_node != p->home_numa_node) {
-					proc_mem_log("Home scheduler isn't in the same node as the first scheduler node, updating home\n");
-					p->home_numa_node = current_node;
-				}
-				if (current_node != p->spawning_numa_node) {
-					//The spawning node might be unknown (-1) if the parent was spawned before
-					//the scheduler had the chance to bind.
-					//Since here the current_node is known, relocates the heap anyway
-					erts_relocate_heap(p);
-				}
-				p->deferred_heap_allocation = 0;
+			current_node = sd->rq->numa_node;	
+			if (current_node != p->home_numa_node) {
+				proc_mem_log("Home scheduler isn't in the same node as the first scheduler node, updating home\n");
+				p->home_numa_node = current_node;
 			}
+			if (current_node != p->spawning_numa_node) {
+				//The spawning node might be unknown (-1) if the parent was spawned before
+				//the scheduler had the chance to bind.
+				//Since here the current_node is known, relocates the heap anyway
+				erts_relocate_heap(p);
+			}
+			p->deferred_heap_allocation = 0;		
 		}
 
 		p->runq_flags |= ERTS_PROC_RUNQ_FLG_RUNNING;
@@ -6653,7 +6687,8 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 #endif
 
 #ifdef ERTS_SMP
-	p->spawning_numa_node = erts_get_scheduler_numa_node(erts_get_runq_proc(parent)->ix + 1);
+	p->spawning_numa_node = erts_get_runq_proc(parent)->numa_node;
+    p->home_numa_node = p->spawning_numa_node;
 	p->deferred_heap_allocation = proc_mem_deffered;
 	proc_mem_log("Spawn. Spawning: %d Running @: %d\n", p->spawning_numa_node, sched_getcpu());
 #endif
@@ -6853,7 +6888,6 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 
 #ifdef ERTS_SMP
 	p->run_queue = rq;
-	p->home_numa_node = erts_get_scheduler_numa_node(rq->ix + 1);
 #endif
 
 	p->status = P_WAITING;

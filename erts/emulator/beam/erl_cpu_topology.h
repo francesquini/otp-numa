@@ -90,7 +90,7 @@ erts_cpu_topology_t* get_cpu_data(int *cpudata);
 Eterm erts_bind_schedulers(Process *c_p, Eterm how);
 Eterm erts_get_schedulers_binds(Process *c_p);
 
-int erts_get_scheduler_numa_node (int scheduler);
+int erts_get_max_numa_node(void);
 
 Eterm erts_get_reader_groups_map(Process *c_p);
 

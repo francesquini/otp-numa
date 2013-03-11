@@ -32,6 +32,10 @@ int proc_sched_ws_disabled(ErtsRunQueue* rq) {
 
 
 
+/******************************************************
+ ******************************************************/
+
+
 #ifdef ERTS_SMP
 
 static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq) {
@@ -54,125 +58,119 @@ static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRun
 	 * Check for a runnable process to steal...
 	 */
 
-	switch (vrq->flags & ERTS_RUNQ_FLGS_PROCS_QMASK) {
-	case MAX_BIT:
-	case MAX_BIT|HIGH_BIT:
-	case MAX_BIT|NORMAL_BIT:
-	case MAX_BIT|LOW_BIT:
-	case MAX_BIT|HIGH_BIT|NORMAL_BIT:
-	case MAX_BIT|HIGH_BIT|LOW_BIT:
-	case MAX_BIT|NORMAL_BIT|LOW_BIT:
-	case MAX_BIT|HIGH_BIT|NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_MAX].last;
-			proc;
-			proc = proc->prev) {
-		if (!proc->bound_runq)
-			break;
-	}
-	if (proc)
-		break;
-	case HIGH_BIT:
-	case HIGH_BIT|NORMAL_BIT:
-	case HIGH_BIT|LOW_BIT:
-	case HIGH_BIT|NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_HIGH].last;
-			proc;
-			proc = proc->prev) {
-		if (!proc->bound_runq)
-			break;
-	}
-	if (proc)
-		break;
-	case NORMAL_BIT:
-	case LOW_BIT:
-	case NORMAL_BIT|LOW_BIT:
-	for (proc = vrq->procs.prio[PRIORITY_NORMAL].last;
-			proc;
-			proc = proc->prev) {
-		if (!proc->bound_runq)
-			break;
-	}
-	if (proc)
-		break;
-	case 0:
-		proc = NULL;
-		break;
-	default:
-		ASSERT(!"Invalid queue mask");
-		proc = NULL;
-		break;
-	}
+	 switch (vrq->flags & ERTS_RUNQ_FLGS_PROCS_QMASK) {
+	 	case MAX_BIT:
+	 	case MAX_BIT|HIGH_BIT:
+	 	case MAX_BIT|NORMAL_BIT:
+	 	case MAX_BIT|LOW_BIT:
+	 	case MAX_BIT|HIGH_BIT|NORMAL_BIT:
+	 	case MAX_BIT|HIGH_BIT|LOW_BIT:
+	 	case MAX_BIT|NORMAL_BIT|LOW_BIT:
+	 	case MAX_BIT|HIGH_BIT|NORMAL_BIT|LOW_BIT:
+		 	for (proc = vrq->procs.prio[PRIORITY_MAX].last; proc; proc = proc->prev) {
+		 		if (!proc->bound_runq)
+		 			break;
+		 	}
+		 	if (proc)
+		 		break;
+	 	case HIGH_BIT:
+	 	case HIGH_BIT|NORMAL_BIT:
+	 	case HIGH_BIT|LOW_BIT:
+	 	case HIGH_BIT|NORMAL_BIT|LOW_BIT:
+		 	for (proc = vrq->procs.prio[PRIORITY_HIGH].last;proc;proc = proc->prev) {
+		 		if (!proc->bound_runq)
+		 			break;
+		 	}
+		 	if (proc)
+		 		break;
+	 	case NORMAL_BIT:
+	 	case LOW_BIT:
+	 	case NORMAL_BIT|LOW_BIT:
+		 	for (proc = vrq->procs.prio[PRIORITY_NORMAL].last;proc;proc = proc->prev) {
+		 		if (!proc->bound_runq)
+		 			break;
+		 	}
+		 	if (proc)
+		 		break;
+	 	case 0:
+		 	proc = NULL;
+		 	break;
+	 	default:
+		 	ASSERT(!"Invalid queue mask");
+		 	proc = NULL;
+	 		break;
+	 }
 
-	if (proc) {
-		ErtsProcLocks proc_locks = 0;
-		int res;
-		ErtsMigrateResult mres;
-		mres = erts_proc_migrate(proc, &proc_locks,
-				vrq, &vrq_locked,
-				rq, rq_lockedp);
-		if (proc_locks)
-			erts_smp_proc_unlock(proc, proc_locks);
-		res = !0;
-		switch (mres) {
-		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-			res = 0;
-		case ERTS_MIGRATE_SUCCESS:
-			if (vrq_locked)
-				erts_smp_runq_unlock(vrq);
-			return res;
+	 if (proc) {
+	 	ErtsProcLocks proc_locks = 0;
+	 	int res;
+	 	ErtsMigrateResult mres;
+	 	mres = erts_proc_migrate(proc, &proc_locks,
+	 		vrq, &vrq_locked,
+	 		rq, rq_lockedp);
+	 	if (proc_locks)
+	 		erts_smp_proc_unlock(proc, proc_locks);
+	 	res = !0;
+	 	switch (mres) {
+	 		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
+	 		res = 0;
+	 		case ERTS_MIGRATE_SUCCESS:
+	 		if (vrq_locked)
+	 			erts_smp_runq_unlock(vrq);
+	 		return res;
 		default: /* Other failures */
-			break;
-		}
-	}
+	 		break;
+	 	}
+	 }
 
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
+	 ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
+	 ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
 
-	if (!vrq_locked) {
-		if (*rq_lockedp)
-			erts_smp_xrunq_lock(rq, vrq);
-		else
-			erts_smp_runq_lock(vrq);
-		vrq_locked = 1;
-	}
+	 if (!vrq_locked) {
+	 	if (*rq_lockedp)
+	 		erts_smp_xrunq_lock(rq, vrq);
+	 	else
+	 		erts_smp_runq_lock(vrq);
+	 	vrq_locked = 1;
+	 }
 
-	try_steal_port:
+	 try_steal_port:
 
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
+	 ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
+	 ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
 
 	/*
 	 * Check for a runnable port to steal...
 	 */
 
-	if (vrq->ports.info.len) {
-		Port *prt = vrq->ports.end;
-		int prt_locked = 0;
-		int res;
-		ErtsMigrateResult mres;
+	 if (vrq->ports.info.len) {
+	 	Port *prt = vrq->ports.end;
+	 	int prt_locked = 0;
+	 	int res;
+	 	ErtsMigrateResult mres;
 
-		mres = erts_port_migrate(prt, &prt_locked,
-				vrq, &vrq_locked,
-				rq, rq_lockedp);
-		if (prt_locked)
-			erts_smp_port_unlock(prt);
-		res = !0;
-		switch (mres) {
-		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-			res = 0;
-		case ERTS_MIGRATE_SUCCESS:
-			if (vrq_locked)
-				erts_smp_runq_unlock(vrq);
-			return res;
+	 	mres = erts_port_migrate(prt, &prt_locked,
+	 		vrq, &vrq_locked,
+	 		rq, rq_lockedp);
+	 	if (prt_locked)
+	 		erts_smp_port_unlock(prt);
+	 	res = !0;
+	 	switch (mres) {
+	 		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
+	 		res = 0;
+	 		case ERTS_MIGRATE_SUCCESS:
+	 		if (vrq_locked)
+	 			erts_smp_runq_unlock(vrq);
+	 		return res;
 		default: /* Other failures */
-			break;
-		}
-	}
+	 		break;
+	 	}
+	 }
 
-	if (vrq_locked)
-		erts_smp_runq_unlock(vrq);
+	 if (vrq_locked)
+	 	erts_smp_runq_unlock(vrq);
 
-	return 0;
+	 return 0;
 }
 
 static ERTS_INLINE int check_possible_steal_victim(ErtsRunQueue *rq, int *rq_lockedp, int vix)

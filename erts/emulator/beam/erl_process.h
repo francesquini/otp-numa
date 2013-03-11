@@ -339,8 +339,19 @@ typedef struct {
 	} migrate;
 } ErtsRunQueueInfo;
 
+
+typedef struct _StructProcessLinkedList {
+  Process *p;
+  struct _StructProcessLinkedList *next;
+  struct _StructProcessLinkedList *prev;
+} ProcessLinkedList;
+
+ProcessLinkedList* process_linked_list_insert_after(Process* p, ProcessLinkedList* cell);
+
+
 struct ErtsRunQueue_ {
-    int ix;
+    int ix;    
+    int numa_node;
     erts_smp_atomic32_t info_flags;
 
     erts_smp_mtx_t mtx;
@@ -384,6 +395,11 @@ struct ErtsRunQueue_ {
 	struct port *start;
 	struct port *end;
     } ports;
+
+    int *run_queues_by_distance;
+    int run_queues_by_distance_size;
+    ProcessLinkedList **foreign_process_list_head;
+
 };
 
 typedef union {
@@ -684,12 +700,6 @@ struct ErtsPendingSuspend_ {
 #  define BIN_OLD_VHEAP(p)    (p)->bin_old_vheap
 
 
-typedef struct _StructProcessLinkedList{
-	Process *p;
-	struct _StructProcessLinkedList *next;
-	struct _StructProcessLinkedList *prev;
-} ProcessLinkedList;
-
 struct process {
     /* All fields in the PCB that differs between different heap
      * architectures, have been moved to the end of this struct to
@@ -865,6 +875,8 @@ struct process {
     int home_numa_node;
 #endif
     ProcessLinkedList* hub;
+    ProcessLinkedList* foreign_node;
+
 
 };
 ERTS_INLINE Uint hub_processes_count(void);

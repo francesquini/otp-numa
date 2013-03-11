@@ -53,7 +53,6 @@
 typedef struct {
     int bind_id;
     int bound_id;
-    int numa_node;
 } ErtsCpuBindData;
 
 static erts_cpu_info_t *cpuinfo;
@@ -61,6 +60,7 @@ static erts_cpu_info_t *cpuinfo;
 static int max_main_threads;
 static int reader_groups;
 
+static int max_numa_node;
 static ErtsCpuBindData *scheduler2cpu_map;
 static erts_smp_rwmtx_t cpuinfo_rwmtx;
 
@@ -583,24 +583,42 @@ erts_sched_init_check_cpu_bind(ErtsSchedulerData *esdp)
 #endif
 
 static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size) {
-        int s_ix = 1;
-        int cpu_ix;
-        ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
-        if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
-                cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
-                for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
-                        if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical)) {
-                                int cpu = cpudata[cpu_ix].logical;
-                                scheduler2cpu_map[s_ix].bind_id = cpu;
-                                scheduler2cpu_map[s_ix].numa_node = numa_node_of_cpu(cpu);
-                                s_ix++;
-                        }
-        }
-        if (s_ix <= erts_no_schedulers)
-                for (; s_ix <= erts_no_schedulers; s_ix++) {
-                        scheduler2cpu_map[s_ix].bind_id = -1;
-                        scheduler2cpu_map[s_ix].numa_node = -1;
+    int s_ix = 1;
+    int cpu_ix;
+    ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
+    if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
+        cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
+        for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
+            if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical)) {
+                    int cpu = cpudata[cpu_ix].logical;
+                    scheduler2cpu_map[s_ix].bind_id = cpu;
+                    ERTS_RUNQ_IX(s_ix)->numa_node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
+                    s_ix++;
+            }
+        if (numa_available() != -1) {
+            int i, j, cont;
+            int schedulers_by_node = erts_no_schedulers / (erts_get_max_numa_node() + 1);
+            int other_schedulers = erts_no_schedulers - schedulers_by_node;
+
+            for (i = 0; i < erts_no_schedulers; i++) {
+                ERTS_RUNQ_IX(i)->run_queues_by_distance_size = other_schedulers;
+                cont = 0;
+                printf("RQ Dist %d (sz %d):", i, other_schedulers);
+                for (j = 0; j < erts_no_schedulers; j++) {
+                    if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
+                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont] = j;
+                        cont++;
+                    }
+                    printf("%d ", j);
                 }
+            }
+        }
+    }
+    if (s_ix <= erts_no_schedulers)
+        for (; s_ix <= erts_no_schedulers; s_ix++) {
+                scheduler2cpu_map[s_ix].bind_id = -1;
+                ERTS_RUNQ_IX(s_ix)->numa_node = 0;
+        }
 }
 
 int erts_init_scheduler_bind_type_string(char *how) {
@@ -1644,8 +1662,8 @@ get_cpu_topology_term(Process *c_p, int type)
     return res;
 }
 
-int erts_get_scheduler_numa_node(int scheduler) {
-        return scheduler2cpu_map[scheduler].numa_node;
+int erts_get_max_numa_node(void) {
+    return max_numa_node;
 }
 
 Eterm
@@ -1751,8 +1769,10 @@ void erts_init_cpu_topology(void) {
         for (ix = 1; ix <= erts_no_schedulers; ix++) {
                 scheduler2cpu_map[ix].bind_id = -1;
                 scheduler2cpu_map[ix].bound_id = -1;
-                scheduler2cpu_map[ix].numa_node = -1;
+                ERTS_RUNQ_IX(ix)->numa_node = 0;
         }
+
+        max_numa_node = (numa_available() == -1) ? 0 : numa_max_node();
 
         if (cpu_bind_order == ERTS_CPU_BIND_UNDEFINED)
                 cpu_bind_order = ERTS_CPU_BIND_NONE;
