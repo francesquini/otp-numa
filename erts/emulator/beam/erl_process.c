@@ -5171,6 +5171,8 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
         fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node); fflush(stderr);
         if (p->home_numa_node != runq->numa_node)
             foreign_node_insert (p, runq);
+        else
+            p->foreign_node.rq_ix = runq->ix;
     }
 #endif    
 
