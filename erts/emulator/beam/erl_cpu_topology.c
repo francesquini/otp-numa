@@ -606,9 +606,9 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                 fflush(stdout);
                 for (j = 0; j < erts_no_schedulers; j++) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
-                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont] = j;
                         printf("%d ", j);
                         fflush(stdout);
+                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont] = j;                        
                         cont++;
                     }                    
                 }
