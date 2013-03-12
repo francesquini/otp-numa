@@ -5133,7 +5133,7 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
             ProcessLinkedList *head, *cell;
 char buf[256];
 erts_snprintf(buf, 256, "%T", p->id);
-printf("%s Enqueuing", buf);
+printf("%s Enqueuing\n", buf);
 fflush(stdout);            
             if (p->foreign_node) {
 erts_snprintf(buf, 256, "%T", p->id);
