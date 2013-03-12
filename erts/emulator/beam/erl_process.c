@@ -5069,19 +5069,11 @@ static ERTS_INLINE void foreign_node_head_lock(ProcessLinkedListHead* head) {
     while(!__sync_bool_compare_and_swap(&head->lock, 0, 1));
 }
 
-static ERTS_INLINE void foreign_node_cell_lock(ProcessLinkedList* cell) {
-    if (cell)
-        foreign_node_head_lock(cell->head);
-}
-
-static ERTS_INLINE void foreign_node_cell_unlock(ProcessLinkedList* cell) {
-    if (cell) {
-        if (!cell->head->lock) {
-            fprintf(stderr, "Unlocking linked list not locked!\n");
-            fflush(stderr);
-        }
-        cell->head->lock = 0;
-    }
+static ERTS_INLINE void foreign_node_head_unlock(ProcessLinkedListHead* head) {
+    if (!__sync_bool_compare_and_swap(&head->lock, 1, 0)) {
+        fprintf(stderr, "Unlocking linked list not locked!\n");
+        fflush(stderr);
+    }        
 }
 
 #ifdef ERTS_SMP
@@ -5095,6 +5087,7 @@ static ERTS_INLINE void foreign_node_insert(Process* p, ErtsRunQueue *rq) {
     
     new_cell->p = p;
     new_cell->head = head;
+    
     foreign_node_head_lock(head);
 
     new_cell->prev = NULL;    
@@ -5104,15 +5097,17 @@ static ERTS_INLINE void foreign_node_insert(Process* p, ErtsRunQueue *rq) {
     head->next = new_cell;
     p->foreign_node.cell = new_cell;
     p->foreign_node.rq_ix = rq->ix;
-    foreign_node_cell_unlock(new_cell);
+
+    foreign_node_head_unlock(head);
 }
 
 static ERTS_INLINE void foreign_node_remove(Process* p) {
     ProcessLinkedList *cell, *prev, *next;
-
+    ProcessLinkedListHead *head;
+    
     cell = p->foreign_node.cell;
-
-    foreign_node_cell_lock(cell);
+    head = cell->head;
+    foreign_node_head_lock(head);
 
     prev = cell->prev;
     next = cell->next;
@@ -5127,7 +5122,7 @@ static ERTS_INLINE void foreign_node_remove(Process* p) {
     p->foreign_node.cell = NULL;
     p->foreign_node.rq_ix = -1;
 
-    foreign_node_cell_unlock(next);
+    foreign_node_head_unlock(head);
 }
 
 #endif 
@@ -5166,23 +5161,18 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
 	rpq->first = p;
     rpq->last = p;
 
+    fprintf(stderr, "%lu Enqueuing rq %d\n", internal_pid_index(p->id), runq->ix); fflush(stderr);
 #ifdef ERTS_SMP
     if (proc_sched_ws_strategy_numa_aware()) {
         if (p->foreign_node.rq_ix != runq->ix && p->home_numa_node != runq->numa_node) {
-            
-            char buf[256];
-            erts_snprintf(buf, 256, "%T", p->id);
-            fprintf(stderr, "%s Enqueuing\n", buf);
-            fflush(stderr);            
+              
             if (p->foreign_node.cell) {
-                erts_snprintf(buf, 256, "%T", p->id);
-                fprintf(stderr, "%s Enqueuing a foreign process before dequeueing\n", buf);
-                fflush(stderr);
+                
+                fprintf(stderr, "%lu Enqueuing a foreign process before dequeueing\n", internal_pid_index(p->id)); fflush(stderr);
                 foreign_node_remove(p);
                 //exit(1);
             }
-            fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node);
-            fflush(stderr);
+            fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node); fflush(stderr);
         
             foreign_node_insert (p, runq);
                         
@@ -5236,8 +5226,7 @@ static ERTS_INLINE int dequeue_process(ErtsRunQueue *runq, Process *p) {
         ASSERT(res == 0);
     }
 
-fprintf(stderr, "C0 %d\n", res);
-fflush(stderr);
+fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->ix, res); fflush(stderr);
 
     if (res) {
         if (--runq->procs.prio_info[p->prio].len == 0)
@@ -5258,16 +5247,11 @@ fflush(stderr);
          * works as expected. If it is not null, removes it from the list
          * and clears it, bringing the process to the previous case
         */
-fprintf(stderr, "C1\n");
-fflush(stderr);         
+fprintf(stderr, "C1\n");fflush(stderr);         
         if (p->foreign_node.cell) {
-char buf[256];
-erts_snprintf(buf, 256, "%T", p->id);
-fprintf(stderr, "%s Dequeuing\n", buf);
-fflush(stderr);
+fprintf(stderr, "%lu Dequeuing\n", internal_pid_index(p->id));fflush(stderr);
             foreign_node_remove(p);
-fprintf(stderr,"C2\n");
-fflush(stderr);
+fprintf(stderr,"C2\n");fflush(stderr);
         }
 
 #endif
