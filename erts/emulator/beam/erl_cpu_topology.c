@@ -589,16 +589,20 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
         cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
         for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
             if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical)) {
+                    int node;
                     int cpu = cpudata[cpu_ix].logical;
                     scheduler2cpu_map[s_ix].bind_id = cpu;
-                    ERTS_RUNQ_IX(s_ix)->numa_node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
+                    node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
+                    ERTS_RUNQ_IX(s_ix)->numa_node = node;
+                    printf("Schedulers: %d Cpu: %d Node: %d", s_ix, cpu, node);
+                    fflush(stdout);        
                     s_ix++;
             }
         if (numa_available() != -1) {
             int i, j, cont;
             int schedulers_by_node = erts_no_schedulers / (erts_get_max_numa_node() + 1);
             int other_schedulers = erts_no_schedulers - schedulers_by_node;
-            printf("Schedulers by node: %d Other schedulers: %d No schedulers: %d", schedulers_by_node, other_schedulers, erts_no_schedulers);
+            printf("Schedulers by node: %d Other schedulers: %d No schedulers: %d\n", schedulers_by_node, other_schedulers, (int)erts_no_schedulers);
             fflush(stdout);
             for (i = 0; i < erts_no_schedulers; i++) {
                 if (ERTS_RUNQ_IX(i)->run_queues_by_distance_size)
