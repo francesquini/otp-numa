@@ -5131,9 +5131,14 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
     if (proc_sched_ws_strategy_numa_aware()) {
         if (p->home_numa_node != runq->numa_node) {
             ProcessLinkedList *head, *cell;
+char buf[256];
+erts_snprintf(buf, 256, "%T", p->id);
+printf("%s Enqueuing", buf);
+fflush(stdout);            
             if (p->foreign_node) {
-                printf("Enqueuing a foreign process before dequeueing");
-                fflush(stdout);
+erts_snprintf(buf, 256, "%T", p->id);
+printf("%s Enqueuing a foreign process before dequeueing\n", buf);
+fflush(stdout);
                 process_linked_list_remove(p->foreign_node);
                 //exit(1);
             }
