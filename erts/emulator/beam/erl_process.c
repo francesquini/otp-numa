@@ -7940,6 +7940,9 @@ erts_do_exit_process(Process* p, Eterm reason)
     erts_pix_lock_t *pix_lock = ERTS_PID2PIXLOCK(p->id);
 #endif
 
+    if (p->foreign_node)
+        process_linked_list_remove(p->foreign_node);
+
     p->arity = 0;		/* No live registers */
     p->fvalue = reason;
 
