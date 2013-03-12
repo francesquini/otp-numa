@@ -61,6 +61,7 @@ static ERTS_INLINE Process* find_foreign_process_to_steal_from_victim(ErtsRunQue
 			!(p->runq_flags & ERTS_PROC_RUNQ_FLG_RUNNING) && //not running
 			(p->status_flags & ERTS_PROC_SFLG_INRUNQ)) //in the RQ
 			return p;
+		cell = cell->next;
 	}
 	return NULL;
 }
