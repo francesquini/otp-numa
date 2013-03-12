@@ -582,7 +582,7 @@ erts_sched_init_check_cpu_bind(ErtsSchedulerData *esdp)
 #endif
 
 static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size) {
-    int s_ix = 1;
+    int s_ix = 0;
     int cpu_ix;
     ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
     if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
