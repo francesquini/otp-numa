@@ -124,6 +124,7 @@ static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, Er
 	Process* proc = NULL;
 	if (bring_home)
 		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
+	fprintf(stderr, "%d Work Stealing Bring Home: %d Found: %p\n", rq->ix, bring_home, proc); fflush(stderr);
 	if (proc == NULL)
 		proc = find_regular_process_to_steal_from_victim(rq, vrq);
 	return proc;
