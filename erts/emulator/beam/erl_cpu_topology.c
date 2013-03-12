@@ -594,25 +594,25 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                     scheduler2cpu_map[s_ix].bind_id = cpu;
                     node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
                     ERTS_RUNQ_IX(s_ix)->numa_node = node;
-                    printf("cpu_ix: %d s_ix: %d RQIx: %d SChedCPU: %d Cpu: %d Node: %d\n", 
-                        cpu_ix, s_ix, ERTS_RUNQ_IX(s_ix)->ix, ERTS_RUNQ_IX(s_ix)->scheduler->cpu_id, cpu, node);
-                    fflush(stdout);        
+//                    printf("cpu_ix: %d s_ix: %d RQIx: %d SChedCPU: %d Cpu: %d Node: %d\n", 
+//                        cpu_ix, s_ix, ERTS_RUNQ_IX(s_ix)->ix, ERTS_RUNQ_IX(s_ix)->scheduler->cpu_id, cpu, node);
+//                    fflush(stdout);        
                     s_ix++;
             }
         if (numa_available() != -1) {
             int i, j, cont;
             int schedulers_by_node = erts_no_schedulers / (erts_get_max_numa_node() + 1);
             int other_schedulers = erts_no_schedulers - schedulers_by_node;
-            printf("Schedulers by node: %d Other schedulers: %d No schedulers: %d\n", schedulers_by_node, other_schedulers, (int)erts_no_schedulers);
-            fflush(stdout);
+//            printf("Schedulers by node: %d Other schedulers: %d No schedulers: %d\n", schedulers_by_node, other_schedulers, (int)erts_no_schedulers);
+//            fflush(stdout);
             for (i = 0; i < erts_no_schedulers; i++) {
                 if (ERTS_RUNQ_IX(i)->run_queues_by_distance_size)
                     free(ERTS_RUNQ_IX(i)->run_queues_by_distance);
                 ERTS_RUNQ_IX(i)->run_queues_by_distance_size = other_schedulers;
                 ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * other_schedulers);
                 cont = 0;
-                printf("RQ Dist %d (sz %d):", i, other_schedulers);
-                fflush(stdout);
+//                printf("RQ Dist %d (sz %d):", i, other_schedulers);
+//                fflush(stdout);
                 for (j = 0; j < erts_no_schedulers; j++) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
                         printf("%d ", j);
@@ -621,8 +621,8 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                         cont++;
                     }                    
                 }
-                printf(" Cont %d \n", cont);
-                fflush(stdout);
+//                printf(" Cont %d \n", cont);
+//                fflush(stdout);
             }
         }
     }

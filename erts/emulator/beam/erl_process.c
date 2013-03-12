@@ -5165,7 +5165,7 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
 #ifdef ERTS_SMP
     if (proc_sched_ws_strategy_numa_aware() && p->foreign_node.rq_ix != runq->ix) {
         if (p->foreign_node.cell) {
-            fprintf(stderr, "%lu Enqueuing a foreign process before dequeueing\n", internal_pid_index(p->id)); fflush(stderr);
+            fprintf(stderr, "%lu Enqueuing a foreign process before dequeueing %d -> %d \n", internal_pid_index(p->id), p->foreign_node.rq_ix, runq->ix); fflush(stderr);
             foreign_node_remove(p);
         }
 //        fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node); fflush(stderr);
