@@ -600,7 +600,10 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
             int other_schedulers = erts_no_schedulers - schedulers_by_node;
 
             for (i = 0; i < erts_no_schedulers; i++) {
+                if (ERTS_RUNQ_IX(i)->run_queues_by_distance_size)
+                    free(ERTS_RUNQ_IX(i)->run_queues_by_distance);
                 ERTS_RUNQ_IX(i)->run_queues_by_distance_size = other_schedulers;
+                ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * other_schedulers);
                 cont = 0;
                 printf("RQ Dist %d (sz %d):", i, other_schedulers);
                 fflush(stdout);
@@ -612,7 +615,7 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                         cont++;
                     }                    
                 }
-                printf("\n");
+                printf(" Cont %d \n", cont);
                 fflush(stdout);
             }
         }
