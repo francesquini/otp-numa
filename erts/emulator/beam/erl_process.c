@@ -5221,7 +5221,7 @@ static ERTS_INLINE int dequeue_process(ErtsRunQueue *runq, Process *p) {
         ASSERT(res == 0);
     }
 
-fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->ix, res); fflush(stderr);
+//fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->ix, res); fflush(stderr);
 
     if (res) {
         if (--runq->procs.prio_info[p->prio].len == 0)
@@ -5241,7 +5241,6 @@ fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->i
          * and clears it, bringing the process to the previous case
         */
         if (p->foreign_node.cell) {
-//fprintf(stderr, "%lu Dequeuing\n", internal_pid_index(p->id));fflush(stderr);
             foreign_node_remove(p);
         }
 #endif
