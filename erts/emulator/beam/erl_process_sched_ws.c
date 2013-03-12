@@ -170,7 +170,7 @@ static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRun
 			case ERTS_MIGRATE_SUCCESS:
 	 			if (vrq_locked)
 	 				erts_smp_runq_unlock(vrq);
-	 			fprintf(stderr, "Work Stealing SUCCESS From %d To %d Bring Home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+	 			fprintf(stderr, "%d -> %d Work Stealing SUCCESS Bring Home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	 			return res;
 			default: /* Other failures */
 				break;
