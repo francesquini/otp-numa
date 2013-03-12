@@ -5133,22 +5133,22 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
             ProcessLinkedList *head, *cell;
 char buf[256];
 erts_snprintf(buf, 256, "%T", p->id);
-printf("%s Enqueuing\n", buf);
-fflush(stdout);            
+fprintf(stderr, "%s Enqueuing\n", buf);
+fflush(stderr);            
             if (p->foreign_node) {
 erts_snprintf(buf, 256, "%T", p->id);
-printf("%s Enqueuing a foreign process before dequeueing\n", buf);
-fflush(stdout);
+fprintf(stderr, "%s Enqueuing a foreign process before dequeueing\n", buf);
+fflush(stderr);
                 process_linked_list_remove(p->foreign_node);
                 //exit(1);
             }
-printf("B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node);
-fflush(stdout);
+fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node);
+fflush(stderr);
             head = runq->foreign_process_list_head[p->home_numa_node];
             cell = process_linked_list_insert_after (p, head);
             p->foreign_node = cell;
-printf("B2\n");
-fflush(stdout);        
+fprintf(stderr, "B2\n");
+fflush(stderr);        
         }
     }
 #endif    
