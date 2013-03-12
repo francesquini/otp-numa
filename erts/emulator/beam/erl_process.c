@@ -5216,13 +5216,17 @@ static ERTS_INLINE int dequeue_process(ErtsRunQueue *runq, Process *p) {
          * works as expected. If it is not null, removes it from the list
          * and clears it, bringing the process to the previous case
         */
+fprintf(stderr, "C1\n");
+fflush(stderr);         
         if (p->foreign_node) {
-printf("C1\n");
-fflush(stdout);            
+char buf[256];
+erts_snprintf(buf, 256, "%T", p->id);
+fprintf(stderr, "%s Dequeuing\n", buf);
+fflush(stderr);            
             process_linked_list_remove(p->foreign_node);
             p->foreign_node = NULL;
-printf("C2\n");
-fflush(stdout);
+fprintf(stderr,"C2\n");
+fflush(stderr);
         }
 
 #endif
