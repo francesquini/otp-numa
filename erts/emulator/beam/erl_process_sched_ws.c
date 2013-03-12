@@ -122,11 +122,16 @@ static ERTS_INLINE Process* find_regular_process_to_steal_from_victim(ErtsRunQue
 
 static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home) {
 	Process* proc = NULL;
-	if (bring_home)
+	if (bring_home) {
 		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
-	fprintf(stderr, "%d Work Stealing Bring Home: %d Found: %p\n", rq->ix, bring_home, proc); fflush(stderr);
-	if (proc == NULL)
+		if (proc)
+			fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+	}
+	if (proc == NULL) {
 		proc = find_regular_process_to_steal_from_victim(rq, vrq);
+		if (proc)
+			fprintf(stderr, "%d -> %d Work Stealing NOT bring home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+	}
 	return proc;
 };
 
