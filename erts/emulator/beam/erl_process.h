@@ -340,14 +340,21 @@ typedef struct {
 } ErtsRunQueueInfo;
 
 
-typedef struct _StructProcessLinkedList {
+struct _StructProcessLinkedList;
+struct _StructProcessLinkedListHead {
+  char lock;
+  struct _StructProcessLinkedList *next;
+};
+
+struct _StructProcessLinkedList {
   Process *p;
   struct _StructProcessLinkedList *next;
   struct _StructProcessLinkedList *prev;
-} ProcessLinkedList;
+  struct _StructProcessLinkedListHead *head;
+};
 
-ProcessLinkedList* process_linked_list_insert_after(Process* p, ProcessLinkedList* cell);
-ProcessLinkedList* process_linked_list_remove(ProcessLinkedList* cell);
+typedef struct _StructProcessLinkedList ProcessLinkedList;
+typedef struct _StructProcessLinkedListHead ProcessLinkedListHead;
 
 struct ErtsRunQueue_ {
     int ix;    
@@ -398,7 +405,7 @@ struct ErtsRunQueue_ {
 
     int *run_queues_by_distance;
     int run_queues_by_distance_size;
-    ProcessLinkedList **foreign_process_list_head;
+    ProcessLinkedListHead **foreign_process_list_head;
 
 };
 
@@ -873,12 +880,17 @@ struct process {
     char deferred_heap_allocation;
     int spawning_numa_node;
     int home_numa_node;
+
+  struct {
+      int rq_ix;
+      ProcessLinkedList* cell;
+    } foreign_node;
 #endif
+    
     ProcessLinkedList* hub;
-    ProcessLinkedList* foreign_node;
-
-
+    
 };
+
 ERTS_INLINE Uint hub_processes_count(void);
 ERTS_INLINE void set_hub_process(Process *p, int bool);
 ERTS_INLINE Eterm hub_processes_list(Process* p);
