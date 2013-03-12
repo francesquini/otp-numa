@@ -3084,6 +3084,8 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
 		rq->ports.start = NULL;
 		rq->ports.end = NULL;
 
+//printf("A1\n");
+//fflush(stdout);
         rq->run_queues_by_distance_size = 0;
         rq->foreign_process_list_head = malloc(sizeof(ProcessLinkedList*) * numa_nodes);
         for (tmp = 0; tmp < numa_nodes; tmp++) {
@@ -3092,6 +3094,8 @@ erts_init_scheduling(int no_schedulers, int no_schedulers_online)
             rq->foreign_process_list_head[tmp]->next = NULL;
             rq->foreign_process_list_head[tmp]->prev = NULL;
         }
+//printf("A2\n");
+//fflush(stdout);        
 
 	}
 
@@ -5077,6 +5081,18 @@ ProcessLinkedList* process_linked_list_insert_after(Process* p, ProcessLinkedLis
     return new_cell;
 }
 
+ProcessLinkedList* process_linked_list_remove(ProcessLinkedList* cell) {
+    ProcessLinkedList *ret;
+    ret = cell->next;
+    if (cell->next)
+        cell->next->prev = cell->prev;
+    if (cell->prev)
+        cell->prev->next = cell->next;
+    free(cell);
+    return ret;
+}
+
+
 static ERTS_INLINE void
 enqueue_process(ErtsRunQueue *runq, Process *p) {
     ErtsRunPrioQueue *rpq;
@@ -5112,20 +5128,23 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
     rpq->last = p;
 
 #ifdef ERTS_SMP
-    if (p->home_numa_node != runq->numa_node) {
-        ProcessLinkedList *head, *cell;
-        if (p->foreign_node) {
-            printf("Enqueuing a foreign process before dequeueing");
-            exit(1);
-        }
-printf("A1 Proc %d Rq %d \n", p->home_numa_node, runq->numa_node);
+    if (proc_sched_ws_strategy_numa_aware()) {
+        if (p->home_numa_node != runq->numa_node) {
+            ProcessLinkedList *head, *cell;
+            if (p->foreign_node) {
+                printf("Enqueuing a foreign process before dequeueing");
+                fflush(stdout);
+                exit(1);
+            }
+printf("B1 Proc %d Rq %d \n", p->home_numa_node, runq->numa_node);
 fflush(stdout);
-        head = runq->foreign_process_list_head[p->home_numa_node];
-        cell = process_linked_list_insert_after (p, head);
-        p->foreign_node = cell;
-printf("A2\n");
+            head = runq->foreign_process_list_head[p->home_numa_node];
+            cell = process_linked_list_insert_after (p, head);
+            p->foreign_node = cell;
+printf("B2\n");
 fflush(stdout);        
-    }    
+        }
+    }
 #endif    
 
     switch (p->status) {
@@ -5147,9 +5166,7 @@ fflush(stdout);
 }
 
 
-static ERTS_INLINE int
-dequeue_process(ErtsRunQueue *runq, Process *p)
-{
+static ERTS_INLINE int dequeue_process(ErtsRunQueue *runq, Process *p) {
     ErtsRunPrioQueue *rpq;
     int res = 1;
 
@@ -5160,33 +5177,48 @@ dequeue_process(ErtsRunQueue *runq, Process *p)
 
     rpq = &runq->procs.prio[p->prio == PRIORITY_LOW ? PRIORITY_NORMAL : p->prio];
     if (p->prev) {
-	p->prev->next = p->next;
-    }
-    else if (rpq->first == p) {
-	rpq->first = p->next;
-    }
-    else {
-	res = 0;
+        p->prev->next = p->next;
+    } else if (rpq->first == p) {
+        rpq->first = p->next;
+    } else {
+        res = 0;
     }
     if (p->next) {
-	p->next->prev = p->prev;
-    }
-    else if (rpq->last == p) {
-	rpq->last = p->prev;
-    }
-    else {
-	ASSERT(res == 0);
+        p->next->prev = p->prev;
+    } else if (rpq->last == p) {
+        rpq->last = p->prev;
+    } else {
+        ASSERT(res == 0);
     }
 
     if (res) {
-
-	if (--runq->procs.prio_info[p->prio].len == 0)
-	    runq->flags &= ~(1 << p->prio);
-	runq->procs.len--;
-	runq->len--;
+        if (--runq->procs.prio_info[p->prio].len == 0)
+            runq->flags &= ~(1 << p->prio);
+        runq->procs.len--;
+        runq->len--;
 
 #ifdef ERTS_SMP
-	p->status_flags &= ~ERTS_PROC_SFLG_INRUNQ;
+        p->status_flags &= ~ERTS_PROC_SFLG_INRUNQ;
+
+
+        /* 
+         * no need to check if the policy is numa aware here. 
+         * If it is enabled, it works as expected.
+         * if it is disabled (and was never enabled), foreign_node
+         * will never be != NULL
+         * if it is disabled (but was enabled), if foreign_node is NULL
+         * works as expected. If it is not null, removes it from the list
+         * and clears it, bringing the process to the previous case
+        */
+        if (p->foreign_node) {
+printf("C1\n");
+fflush(stdout);            
+            process_linked_list_remove(p->foreign_node);
+            p->foreign_node = NULL;
+printf("C2\n");
+fflush(stdout);
+        }
+
 #endif
     }
 
@@ -6689,6 +6721,7 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 #ifdef ERTS_SMP
 	p->spawning_numa_node = erts_get_runq_proc(parent)->numa_node;
     p->home_numa_node = p->spawning_numa_node;
+    p->foreign_node = NULL;
 	p->deferred_heap_allocation = proc_mem_deffered;
 	proc_mem_log("Spawn. Spawning: %d Running @: %d\n", p->spawning_numa_node, sched_getcpu());
 #endif

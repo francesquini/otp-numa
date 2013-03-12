@@ -9,5 +9,6 @@
 
 int proc_sched_ws_default(ErtsRunQueue* rq);
 int proc_sched_ws_disabled(ErtsRunQueue* rq);
+int proc_sched_ws_numa_aware(ErtsRunQueue* rq);
 
 #endif

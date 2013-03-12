@@ -347,7 +347,7 @@ typedef struct _StructProcessLinkedList {
 } ProcessLinkedList;
 
 ProcessLinkedList* process_linked_list_insert_after(Process* p, ProcessLinkedList* cell);
-
+ProcessLinkedList* process_linked_list_remove(ProcessLinkedList* cell);
 
 struct ErtsRunQueue_ {
     int ix;    

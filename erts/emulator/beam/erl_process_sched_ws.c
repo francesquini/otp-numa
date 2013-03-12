@@ -10,11 +10,11 @@
  ***************************
  ***************************/
 #ifdef ERTS_SMP
-static int try_steal_task(ErtsRunQueue *rq);
+static int try_steal_task(ErtsRunQueue *rq, int bring_home);
 #endif
 int proc_sched_ws_default(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
-	return try_steal_task(rq);
+	return try_steal_task(rq, 0);
 #else
 	return 0;
 #endif
@@ -30,6 +30,19 @@ int proc_sched_ws_disabled(ErtsRunQueue* rq) {
 	return 0;
 }
 
+/***************************
+ ***************************
+ * NUMA Aware
+ ***************************
+ ***************************/
+
+int proc_sched_ws_numa_aware(ErtsRunQueue* rq) {
+#ifdef ERTS_SMP
+	return try_steal_task(rq, 1);
+#else
+	return 0;
+#endif
+};
 
 
 /******************************************************
@@ -38,27 +51,28 @@ int proc_sched_ws_disabled(ErtsRunQueue* rq) {
 
 #ifdef ERTS_SMP
 
-static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq) {
-	Process *proc;
-	int vrq_locked;
 
-	if (*rq_lockedp)
-		erts_smp_xrunq_lock(rq, vrq);
-	else
-		erts_smp_runq_lock(vrq);
-	vrq_locked = 1;
+static ERTS_INLINE Process* find_foreign_process_to_steal_from_victim(ErtsRunQueue *rq, ErtsRunQueue *vrq) {
+	int my_node = rq->numa_node;
+	ProcessLinkedList* cell = vrq->foreign_process_list_head[my_node]->next;
+	while (cell) {
+		Process *p = cell->p;
+		if (!p->bound_runq && //not bound
+			!(p->runq_flags & ERTS_PROC_RUNQ_FLG_RUNNING) && //not running
+			(p->status_flags & ERTS_PROC_SFLG_INRUNQ)) //in the RQ
+			return p;
+	}
+	return NULL;
+}
 
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-	ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
-
-	if (rq->halt_in_progress)
-		goto try_steal_port;
-
+static ERTS_INLINE Process* find_regular_process_to_steal_from_victim(ErtsRunQueue *rq, ErtsRunQueue *vrq) {
+	
 	/*
 	 * Check for a runnable process to steal...
 	 */
 
-	 switch (vrq->flags & ERTS_RUNQ_FLGS_PROCS_QMASK) {
+	Process* proc;
+	switch (vrq->flags & ERTS_RUNQ_FLGS_PROCS_QMASK) {
 	 	case MAX_BIT:
 	 	case MAX_BIT|HIGH_BIT:
 	 	case MAX_BIT|NORMAL_BIT:
@@ -99,35 +113,67 @@ static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRun
 		 	ASSERT(!"Invalid queue mask");
 		 	proc = NULL;
 	 		break;
-	 }
+	}
+	return proc;
+}
 
-	 if (proc) {
-	 	ErtsProcLocks proc_locks = 0;
-	 	int res;
-	 	ErtsMigrateResult mres;
-	 	mres = erts_proc_migrate(proc, &proc_locks,
-	 		vrq, &vrq_locked,
-	 		rq, rq_lockedp);
-	 	if (proc_locks)
-	 		erts_smp_proc_unlock(proc, proc_locks);
-	 	res = !0;
-	 	switch (mres) {
-	 		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-	 		res = 0;
-	 		case ERTS_MIGRATE_SUCCESS:
-	 		if (vrq_locked)
-	 			erts_smp_runq_unlock(vrq);
-	 		return res;
-		default: /* Other failures */
-	 		break;
-	 	}
-	 }
 
-	 ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
-	 ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
 
-	 if (!vrq_locked) {
-	 	if (*rq_lockedp)
+static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home) {
+	Process* proc = NULL;
+	if (bring_home)
+		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
+	if (proc == NULL)
+		proc = find_regular_process_to_steal_from_victim(rq, vrq);
+	return proc;
+};
+
+
+static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq, int bring_home) {
+	Process *proc;
+	int vrq_locked;
+
+	if (*rq_lockedp)
+		erts_smp_xrunq_lock(rq, vrq);
+	else
+		erts_smp_runq_lock(vrq);
+	vrq_locked = 1;
+
+	ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
+	ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
+
+	if (rq->halt_in_progress)
+		goto try_steal_port;
+
+	proc = find_proc_to_steal_from_victim (rq, vrq, bring_home);
+
+	if (proc) {
+		ErtsProcLocks proc_locks = 0;
+		int res;
+		ErtsMigrateResult mres;
+		mres = erts_proc_migrate(proc, &proc_locks,
+			vrq, &vrq_locked,
+			rq, rq_lockedp);
+		if (proc_locks)
+			erts_smp_proc_unlock(proc, proc_locks);
+		res = !0;
+		switch (mres) {
+			case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
+				res = 0;
+			case ERTS_MIGRATE_SUCCESS:
+	 			if (vrq_locked)
+	 				erts_smp_runq_unlock(vrq);
+	 			return res;
+			default: /* Other failures */
+				break;
+		}
+	}
+
+	ERTS_SMP_LC_CHK_RUNQ_LOCK(rq, *rq_lockedp);
+	ERTS_SMP_LC_CHK_RUNQ_LOCK(vrq, vrq_locked);
+
+	if (!vrq_locked) {
+		if (*rq_lockedp)
 	 		erts_smp_xrunq_lock(rq, vrq);
 	 	else
 	 		erts_smp_runq_lock(vrq);
@@ -143,47 +189,43 @@ static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRun
 	 * Check for a runnable port to steal...
 	 */
 
-	 if (vrq->ports.info.len) {
-	 	Port *prt = vrq->ports.end;
-	 	int prt_locked = 0;
-	 	int res;
-	 	ErtsMigrateResult mres;
-
-	 	mres = erts_port_migrate(prt, &prt_locked,
-	 		vrq, &vrq_locked,
-	 		rq, rq_lockedp);
-	 	if (prt_locked)
-	 		erts_smp_port_unlock(prt);
-	 	res = !0;
-	 	switch (mres) {
-	 		case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
-	 		res = 0;
-	 		case ERTS_MIGRATE_SUCCESS:
-	 		if (vrq_locked)
-	 			erts_smp_runq_unlock(vrq);
-	 		return res;
-		default: /* Other failures */
-	 		break;
-	 	}
-	 }
-
-	 if (vrq_locked)
-	 	erts_smp_runq_unlock(vrq);
-
-	 return 0;
+	if (vrq->ports.info.len) {
+		Port *prt = vrq->ports.end;
+		int prt_locked = 0;
+		int res;
+		ErtsMigrateResult mres;
+		mres = erts_port_migrate(prt, &prt_locked,
+			vrq, &vrq_locked,
+			rq, rq_lockedp);
+		if (prt_locked)
+			erts_smp_port_unlock(prt);
+		res = !0;
+		switch (mres) {
+			case ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED:
+				res = 0;
+			case ERTS_MIGRATE_SUCCESS:
+				if (vrq_locked)
+					erts_smp_runq_unlock(vrq);
+				return res;
+			default: /* Other failures */
+				break;
+		}
+	}
+	if (vrq_locked)
+		erts_smp_runq_unlock(vrq);
+	return 0;
 }
 
-static ERTS_INLINE int check_possible_steal_victim(ErtsRunQueue *rq, int *rq_lockedp, int vix)
-{
+static ERTS_INLINE int check_possible_steal_victim(ErtsRunQueue *rq, int *rq_lockedp, int vix, int bring_home) {
 	ErtsRunQueue *vrq = ERTS_RUNQ_IX(vix);
 	erts_aint32_t iflgs = erts_smp_atomic32_read_nob(&vrq->info_flags);
 	if (iflgs & ERTS_RUNQ_IFLG_NONEMPTY)
-		return try_steal_task_from_victim(rq, rq_lockedp, vrq);
+		return try_steal_task_from_victim(rq, rq_lockedp, vrq, bring_home);
 	else
 		return 0;
 }
 
-static int try_steal_task(ErtsRunQueue *rq) {
+static int try_steal_task(ErtsRunQueue *rq, int bring_home) {
 	int res, rq_locked, vix, active_rqs, blnc_rqs;
 
 	/*
@@ -212,7 +254,7 @@ static int try_steal_task(ErtsRunQueue *rq) {
 			int no = blnc_rqs - active_rqs;
 			int stop_ix = vix = active_rqs + rq->ix % no;
 			while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
-				res = check_possible_steal_victim(rq, &rq_locked, vix);
+				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
 				if (res)
 					goto done;
 				vix++;
@@ -233,7 +275,7 @@ static int try_steal_task(ErtsRunQueue *rq) {
 			if (vix == rq->ix)
 				break;
 
-			res = check_possible_steal_victim(rq, &rq_locked, vix);
+			res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
 			if (res)
 				goto done;
 		}
@@ -251,5 +293,8 @@ static int try_steal_task(ErtsRunQueue *rq) {
 
 	return res;
 }
+
+
+
 #endif
 

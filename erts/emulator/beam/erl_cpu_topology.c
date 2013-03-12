@@ -60,7 +60,6 @@ static erts_cpu_info_t *cpuinfo;
 static int max_main_threads;
 static int reader_groups;
 
-static int max_numa_node;
 static ErtsCpuBindData *scheduler2cpu_map;
 static erts_smp_rwmtx_t cpuinfo_rwmtx;
 
@@ -604,13 +603,17 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                 ERTS_RUNQ_IX(i)->run_queues_by_distance_size = other_schedulers;
                 cont = 0;
                 printf("RQ Dist %d (sz %d):", i, other_schedulers);
+                fflush(stdout);
                 for (j = 0; j < erts_no_schedulers; j++) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
                         ERTS_RUNQ_IX(i)->run_queues_by_distance[cont] = j;
+                        printf("%d ", j);
+                        fflush(stdout);
                         cont++;
-                    }
-                    printf("%d ", j);
+                    }                    
                 }
+                printf("\n");
+                fflush(stdout);
             }
         }
     }
@@ -1662,7 +1665,11 @@ get_cpu_topology_term(Process *c_p, int type)
     return res;
 }
 
+
 int erts_get_max_numa_node(void) {
+    static int max_numa_node = -1;
+    if (max_numa_node == -1)
+        max_numa_node = (numa_available() == -1) ? 0 : numa_max_node();
     return max_numa_node;
 }
 
@@ -1771,8 +1778,6 @@ void erts_init_cpu_topology(void) {
                 scheduler2cpu_map[ix].bound_id = -1;
                 ERTS_RUNQ_IX(ix)->numa_node = 0;
         }
-
-        max_numa_node = (numa_available() == -1) ? 0 : numa_max_node();
 
         if (cpu_bind_order == ERTS_CPU_BIND_UNDEFINED)
                 cpu_bind_order = ERTS_CPU_BIND_NONE;

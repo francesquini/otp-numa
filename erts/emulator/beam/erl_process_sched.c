@@ -206,6 +206,9 @@ ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strate
 	case PROC_SCHED_WS_DISABLED:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_disabled;
 		break;
+	case PROC_SCHED_WS_NUMA_AWARE:
+		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_numa_aware;
+		break;
 	default:
 		return;
 	}
@@ -219,6 +222,10 @@ ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strate
 
 int proc_sched_get_ws_strategy (void) {
 	return PROC_SCHED_CURRENT_WS_STRATEGY;
+}
+
+ERTS_INLINE int proc_sched_ws_strategy_numa_aware(void) {
+	return proc_sched_get_ws_strategy() == PROC_SCHED_WS_NUMA_AWARE;
 }
 
 

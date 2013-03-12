@@ -71,13 +71,17 @@ void proc_sched_immigrate (ErtsRunQueue*);
 /* Possible work stealing strategies */
 typedef enum enum_proc_sched_ws_strategy {
 	PROC_SCHED_WS_DEFAULT = 0,
-	PROC_SCHED_WS_DISABLED = 1
+	PROC_SCHED_WS_DISABLED = 1,
+	PROC_SCHED_WS_NUMA_AWARE = 2,
 } proc_sched_ws_strategy;
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy);
 int proc_sched_get_ws_strategy (void);
+int proc_sched_ws_strategy_numa_aware(void);
 
 int proc_sched_work_stealing(ErtsRunQueue*);
+
+
 
 #endif
 
