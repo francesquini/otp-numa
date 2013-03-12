@@ -5172,10 +5172,7 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
             }
             fprintf(stderr, "B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node); fflush(stderr);
         
-            foreign_node_insert (p, runq);
-                        
-            fprintf(stderr, "B2\n");
-            fflush(stderr);        
+            foreign_node_insert (p, runq);       
         }
     }
 #endif    
@@ -5234,8 +5231,6 @@ fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->i
 
 #ifdef ERTS_SMP
         p->status_flags &= ~ERTS_PROC_SFLG_INRUNQ;
-
-
         /* 
          * no need to check if the policy is numa aware here. 
          * If it is enabled, it works as expected.
@@ -5245,13 +5240,10 @@ fprintf(stderr, "%lu Dequeuing (rq %d) %d\n", internal_pid_index(p->id), runq->i
          * works as expected. If it is not null, removes it from the list
          * and clears it, bringing the process to the previous case
         */
-fprintf(stderr, "C1\n");fflush(stderr);         
         if (p->foreign_node.cell) {
-fprintf(stderr, "%lu Dequeuing\n", internal_pid_index(p->id));fflush(stderr);
+//fprintf(stderr, "%lu Dequeuing\n", internal_pid_index(p->id));fflush(stderr);
             foreign_node_remove(p);
-fprintf(stderr,"C2\n");fflush(stderr);
         }
-
 #endif
     }
 
