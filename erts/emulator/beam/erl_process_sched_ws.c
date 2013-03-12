@@ -124,13 +124,13 @@ static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, Er
 	Process* proc = NULL;
 	if (bring_home) {
 		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
-		if (proc)
-			fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+//		if (proc)
+//			fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	}
 	if (proc == NULL) {
 		proc = find_regular_process_to_steal_from_victim(rq, vrq);
-		if (proc)
-			fprintf(stderr, "%d -> %d Work Stealing NOT bring home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+//		if (proc)
+//			fprintf(stderr, "%d -> %d Work Stealing NOT bring home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	}
 	return proc;
 };
@@ -170,7 +170,7 @@ static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRun
 			case ERTS_MIGRATE_SUCCESS:
 	 			if (vrq_locked)
 	 				erts_smp_runq_unlock(vrq);
-	 			fprintf(stderr, "%d -> %d Work Stealing SUCCESS Bring Home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+//	 			fprintf(stderr, "%d -> %d Work Stealing SUCCESS Bring Home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	 			return res;
 			default: /* Other failures */
 				break;
