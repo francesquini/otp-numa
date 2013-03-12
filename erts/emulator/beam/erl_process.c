@@ -5134,9 +5134,10 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
             if (p->foreign_node) {
                 printf("Enqueuing a foreign process before dequeueing");
                 fflush(stdout);
-                exit(1);
+                process_linked_list_remove(p->foreign_node);
+                //exit(1);
             }
-printf("B1 Proc %d Rq %d \n", p->home_numa_node, runq->numa_node);
+printf("B1 Proc HomeNode: %d NewRq %d NeqRqHomeNode %d\n", p->home_numa_node, runq->ix, runq->numa_node);
 fflush(stdout);
             head = runq->foreign_process_list_head[p->home_numa_node];
             cell = process_linked_list_insert_after (p, head);
