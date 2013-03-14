@@ -883,7 +883,7 @@ struct process {
 
   struct {
       int rq_ix;
-      ProcessLinkedList* cell;
+      ProcessLinkedList fcell;
     } foreign_node;
 #endif
     

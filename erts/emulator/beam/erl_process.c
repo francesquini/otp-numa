@@ -5080,46 +5080,46 @@ static ERTS_INLINE void foreign_node_head_unlock(ProcessLinkedListHead* head) {
 
 static ERTS_INLINE void foreign_node_insert(Process* p, ErtsRunQueue *rq) {
     ProcessLinkedListHead *head; 
-    ProcessLinkedList *new_cell; 
 
     head = rq->foreign_process_list_head[p->home_numa_node];
-    new_cell = malloc(sizeof(ProcessLinkedList));
     
-    new_cell->p = p;
-    new_cell->head = head;
+    p->foreign_node.fcell.p = p;
+    p->foreign_node.fcell.head = head;
     
     foreign_node_head_lock(head);
 
-    new_cell->prev = NULL;    
-    new_cell->next = head->next;
+    p->foreign_node.fcell.prev = NULL;    
+    p->foreign_node.fcell.next = head->next;
     if (head->next)
-        head->next->prev = new_cell;
-    head->next = new_cell;
-    p->foreign_node.cell = new_cell;
+        head->next->prev = &p->foreign_node.fcell;
+    head->next = &p->foreign_node.fcell;
+
     p->foreign_node.rq_ix = rq->ix;
 
     foreign_node_head_unlock(head);
 }
 
 static ERTS_INLINE void foreign_node_remove(Process* p) {
-    ProcessLinkedList *cell, *prev, *next;
+    ProcessLinkedList *prev, *next;
     ProcessLinkedListHead *head;
     
-    cell = p->foreign_node.cell;
-    head = cell->head;
+    head = p->foreign_node.fcell.head;
     foreign_node_head_lock(head);
 
-    prev = cell->prev;
-    next = cell->next;
+    prev = p->foreign_node.fcell.prev;
+    next = p->foreign_node.fcell.next;
 
     if (next)
         next->prev = prev;
     if (prev)
         prev->next = next;
     else //first of the list. Needs to fix head
-        cell->head->next = next;
-    free(cell);
-    p->foreign_node.cell = NULL;
+        p->foreign_node.fcell.head->next = next;
+    
+    p->foreign_node.fcell.p = NULL;
+    p->foreign_node.fcell.head = NULL;
+    p->foreign_node.fcell.next = NULL;
+    p->foreign_node.fcell.prev = NULL;
     p->foreign_node.rq_ix = -1;
 
     foreign_node_head_unlock(head);
@@ -5164,7 +5164,7 @@ enqueue_process(ErtsRunQueue *runq, Process *p) {
  //   fprintf(stderr, "%lu Enqueuing rq %d\n", internal_pid_index(p->id), runq->ix); fflush(stderr);
 #ifdef ERTS_SMP
     if (proc_sched_ws_strategy_numa_aware() && p->foreign_node.rq_ix != runq->ix) {
-        if (p->foreign_node.cell) {
+        if (p->foreign_node.fcell.p) {
 //            fprintf(stderr, "%lu Enqueuing a foreign process before dequeueing %d -> %d \n", internal_pid_index(p->id), p->foreign_node.rq_ix, runq->ix); fflush(stderr);
             foreign_node_remove(p);
         }
@@ -5239,7 +5239,7 @@ static ERTS_INLINE int dequeue_process(ErtsRunQueue *runq, Process *p) {
          * works as expected. If it is not null, removes it from the list
          * and clears it, bringing the process to the previous case
         */
-        if (p->foreign_node.cell) {
+        if (p->foreign_node.fcell.p) {
             foreign_node_remove(p);
         }
 #endif
@@ -6745,7 +6745,10 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 	p->spawning_numa_node = erts_get_runq_proc(parent)->numa_node;
     p->home_numa_node = p->spawning_numa_node;
     p->foreign_node.rq_ix = -1;
-    p->foreign_node.cell = NULL;
+    p->foreign_node.fcell.p = NULL;
+    p->foreign_node.fcell.head = NULL;
+    p->foreign_node.fcell.next = NULL;
+    p->foreign_node.fcell.prev = NULL;
 	p->deferred_heap_allocation = proc_mem_deffered;
 	proc_mem_log("Spawn. Spawning: %d Running @: %d\n", p->spawning_numa_node, sched_getcpu());
 #endif
@@ -7962,7 +7965,7 @@ erts_do_exit_process(Process* p, Eterm reason)
 #ifdef ERTS_SMP
     erts_pix_lock_t *pix_lock = ERTS_PID2PIXLOCK(p->id);
 
-    if (p->foreign_node.cell)
+    if (p->foreign_node.fcell.p)
         foreign_node_remove(p);
 #endif
 

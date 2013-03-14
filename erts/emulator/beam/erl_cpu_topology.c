@@ -60,7 +60,7 @@ static erts_cpu_info_t *cpuinfo;
 static int max_main_threads;
 static int reader_groups;
 
-static ErtsCpuBindData *scheduler2cpu_map;
+static ErtsCpuBindData *scheduler2cpu_map; //1-based
 static erts_smp_rwmtx_t cpuinfo_rwmtx;
 
 #define ERTS_CPU_BIND_DEFAULT_BIND \
