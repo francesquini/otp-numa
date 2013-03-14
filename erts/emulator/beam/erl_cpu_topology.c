@@ -582,21 +582,30 @@ erts_sched_init_check_cpu_bind(ErtsSchedulerData *esdp)
 #endif
 
 static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size) {
-    int s_ix = 0;
+    
+    int s_ix = 1; //yes, one!
     int cpu_ix;
+
     ERTS_SMP_LC_ASSERT(erts_lc_rwmtx_is_rwlocked(&cpuinfo_rwmtx));
+    
     if (cpu_bind_order != ERTS_CPU_BIND_NONE && size) {
+    
         cpu_bind_order_sort(cpudata, size, cpu_bind_order, 1);
+    
         for (cpu_ix = 0; cpu_ix < size && cpu_ix < erts_no_schedulers; cpu_ix++)
             if (erts_is_cpu_available(cpuinfo, cpudata[cpu_ix].logical)) {
-                    int node;
-                    int cpu = cpudata[cpu_ix].logical;
+                    ErtsRunQueue *rq;
+                    int node, cpu;
+
+                    cpu = cpudata[cpu_ix].logical;
                     scheduler2cpu_map[s_ix].bind_id = cpu;
+                    
                     node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
-                    ERTS_RUNQ_IX(s_ix)->numa_node = node;
-//                    printf("cpu_ix: %d s_ix: %d RQIx: %d SChedCPU: %d Cpu: %d Node: %d\n", 
-//                        cpu_ix, s_ix, ERTS_RUNQ_IX(s_ix)->ix, ERTS_RUNQ_IX(s_ix)->scheduler->cpu_id, cpu, node);
-//                    fflush(stdout);        
+                    rq = ERTS_RUNQ_IX(s_ix - 1);
+                    rq->numa_node = node;
+                    printf("cpu_ix: %d s_ix: %d RQIx: %d SchedIX: %d SChedCPU: %d Cpu: %d Node: %d\n", 
+                            cpu_ix, s_ix, rq->ix, (int)rq->scheduler->no, rq->scheduler->cpu_id, cpu, node);
+                    fflush(stdout);        
                     s_ix++;
             }
         if (numa_available() != -1) {
