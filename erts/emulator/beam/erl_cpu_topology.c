@@ -603,9 +603,9 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                     node = (numa_available() == -1) ? 0 : numa_node_of_cpu(cpu);
                     rq = ERTS_RUNQ_IX(s_ix - 1);
                     rq->numa_node = node;
-                    printf("cpu_ix: %d s_ix: %d RQIx: %d SchedIX: %d SChedCPU: %d Cpu: %d Node: %d\n", 
-                            cpu_ix, s_ix, rq->ix, (int)rq->scheduler->no, rq->scheduler->cpu_id, cpu, node);
-                    fflush(stdout);        
+                    // printf("cpu_ix: %d s_ix: %d RQIx: %d SchedIX: %d SChedCPU: %d Cpu: %d Node: %d\n", 
+                    //         cpu_ix, s_ix, rq->ix, (int)rq->scheduler->no, rq->scheduler->cpu_id, cpu, node);
+                    // fflush(stdout);        
                     s_ix++;
             }
         if (numa_available() != -1) {
