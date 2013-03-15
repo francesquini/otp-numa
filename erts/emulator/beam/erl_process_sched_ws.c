@@ -10,9 +10,9 @@
  ***************************
  ***************************/
 #ifdef ERTS_SMP
-static int try_steal_task(ErtsRunQueue *rq, int bring_home);
+static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int bring_home);
 #endif
-int proc_sched_ws_default(ErtsRunQueue* rq) {
+ERTS_INLINE int proc_sched_ws_default(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
 	return try_steal_task(rq, 0);
 #else
@@ -26,7 +26,7 @@ int proc_sched_ws_default(ErtsRunQueue* rq) {
  ***************************
  ***************************/
 
-int proc_sched_ws_disabled(ErtsRunQueue* rq) {
+ERTS_INLINE int proc_sched_ws_disabled(ErtsRunQueue* rq) {
 	return 0;
 }
 
@@ -36,7 +36,7 @@ int proc_sched_ws_disabled(ErtsRunQueue* rq) {
  ***************************
  ***************************/
 
-int proc_sched_ws_numa_aware(ErtsRunQueue* rq) {
+ERTS_INLINE int proc_sched_ws_numa_aware(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
 	return try_steal_task(rq, 1);
 #else
@@ -136,7 +136,7 @@ static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, Er
 };
 
 
-static int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq, int bring_home) {
+static ERTS_INLINE int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lockedp, ErtsRunQueue *vrq, int bring_home) {
 	Process *proc;
 	int vrq_locked;
 
@@ -233,7 +233,7 @@ static ERTS_INLINE int check_possible_steal_victim(ErtsRunQueue *rq, int *rq_loc
 		return 0;
 }
 
-static int try_steal_task(ErtsRunQueue *rq, int bring_home) {
+static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int bring_home) {
 	int res, rq_locked, vix, active_rqs, blnc_rqs;
 
 	/*

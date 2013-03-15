@@ -679,7 +679,9 @@ int erts_init_scheduler_bind_type_string(char *how) {
         } else if (sys_strcmp(how, "nspp") == 0) {
                 cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
                 proc_mem_initialize(1, 0, 0);
-
+        } else if (sys_strcmp(how, "spp") == 0) {
+                cpu_bind_order = ERTS_CPU_BIND_SPREAD;
+                proc_mem_initialize(1, 0, 0);
         } else
                 return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE;
         return ERTS_INIT_SCHED_BIND_TYPE_SUCCESS;

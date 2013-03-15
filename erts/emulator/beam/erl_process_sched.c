@@ -71,7 +71,7 @@ ERTS_INLINE static void proc_sched_ip_initialize(void) {
 }
 
 
-void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
+ERTS_INLINE void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
 	if (strategy == PROC_SCHED_CURRENT_IP_STRATEGY) return;
 	internal_proc_sched_set_initial_placement_strategy (strategy);
 }
@@ -85,7 +85,7 @@ ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc
 }
 
 
-void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb) {
+ERTS_INLINE void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb) {
 	Uint n = 0;
 #ifdef ERTS_SMP
 	erts_smp_mtx_lock(&balance_info.update_mtx);
@@ -103,12 +103,12 @@ void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str,
 }
 
 
-int proc_sched_get_initial_placement_strategy(void) {
+ERTS_INLINE int proc_sched_get_initial_placement_strategy(void) {
 	return PROC_SCHED_CURRENT_IP_STRATEGY;
 }
 
 
-ErtsRunQueue *proc_sched_initial_placement (Process* process, Process* parent) {
+ERTS_INLINE ErtsRunQueue *proc_sched_initial_placement (Process* process, Process* parent) {
 	return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY](process, parent);
 }
 
@@ -131,7 +131,7 @@ ERTS_INLINE static void proc_sched_cb_initialize(void) {
 }
 
 
-void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
+ERTS_INLINE void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	if (PROC_SCHED_CURRENT_MIGRATION_STRATEGY == strategy) return;
 	internal_proc_sched_set_migration_strategy(strategy);
 }
@@ -156,12 +156,12 @@ ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_mi
 }
 
 
-int proc_sched_get_migration_strategy(void) {
+ERTS_INLINE int proc_sched_get_migration_strategy(void) {
 	return PROC_SCHED_CURRENT_MIGRATION_STRATEGY;
 }
 
 
-void proc_sched_check_balance (ErtsRunQueue *rq) {
+ERTS_INLINE void proc_sched_check_balance (ErtsRunQueue *rq) {
 	Uint cbs;
 #ifdef USE_VM_PROBES
 	//if (DTRACE_ENABLED(scheduler_check_balance))
@@ -172,7 +172,7 @@ void proc_sched_check_balance (ErtsRunQueue *rq) {
 }
 
 
-void proc_sched_immigrate (ErtsRunQueue *rq) {
+ERTS_INLINE void proc_sched_immigrate (ErtsRunQueue *rq) {
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
 }
 
@@ -186,14 +186,14 @@ void proc_sched_immigrate (ErtsRunQueue *rq) {
 //Work Stealing
 static proc_sched_ws_strategy PROC_SCHED_CURRENT_WS_STRATEGY;
 static int (*PROC_SCHED_CURR_WS_STG_FUN)(ErtsRunQueue *) = &proc_sched_ws_default;
-
+int proc_sched_ws_strategy_numa_aware = 0;
 
 ERTS_INLINE static void proc_sched_ws_initialize(void) {
 	internal_proc_sched_set_ws_strategy(PROC_SCHED_WS_DEFAULT);
 }
 
 
-void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
+ERTS_INLINE void proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy) {
 	if (strategy == PROC_SCHED_CURRENT_WS_STRATEGY) return;
 	internal_proc_sched_set_ws_strategy(strategy);
 }
@@ -202,12 +202,15 @@ ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strate
 	switch (strategy) {
 	case PROC_SCHED_WS_DEFAULT:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
+		proc_sched_ws_strategy_numa_aware = 0;
 		break;
 	case PROC_SCHED_WS_DISABLED:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_disabled;
+		proc_sched_ws_strategy_numa_aware = 0;
 		break;
 	case PROC_SCHED_WS_NUMA_AWARE:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_numa_aware;
+		proc_sched_ws_strategy_numa_aware = 1;
 		break;
 	default:
 		return;
@@ -220,16 +223,11 @@ ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strate
 }
 
 
-int proc_sched_get_ws_strategy (void) {
+ERTS_INLINE int proc_sched_get_ws_strategy (void) {
 	return PROC_SCHED_CURRENT_WS_STRATEGY;
 }
 
-ERTS_INLINE int proc_sched_ws_strategy_numa_aware(void) {
-	return proc_sched_get_ws_strategy() == PROC_SCHED_WS_NUMA_AWARE;
-}
-
-
-int proc_sched_work_stealing(ErtsRunQueue* rq) {
+ERTS_INLINE int proc_sched_work_stealing(ErtsRunQueue* rq) {
 #ifdef USE_VM_PROBES
 	//	if (DTRACE_ENABLED(scheduler_work_stealing))
 	DTRACE1(scheduler_work_stealing, rq->ix + 1);
