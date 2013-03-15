@@ -119,18 +119,22 @@ static ERTS_INLINE Process* find_regular_process_to_steal_from_victim(ErtsRunQue
 }
 
 
-
+/* Bring home meanings
+ * 0 - Any process will do
+ * 1 - Try to bring home first, and then if not possible, any process
+ * 2 - Only accept processes coming home
+ */
 static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home) {
 	Process* proc = NULL;
-	if (bring_home) {
+	
+	if (bring_home) { //bring home: 1 or 2
 		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
-//		if (proc)
-//			fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+//		if (proc) fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	}
-	if (proc == NULL) {
+
+	if (proc == NULL && bring_home < 2) {
 		proc = find_regular_process_to_steal_from_victim(rq, vrq);
-//		if (proc)
-//			fprintf(stderr, "%d -> %d Work Stealing NOT bring home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
+//		if (proc) fprintf(stderr, "%d -> %d Work Stealing NOT bring home: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	}
 	return proc;
 };
@@ -233,8 +237,8 @@ static ERTS_INLINE int check_possible_steal_victim(ErtsRunQueue *rq, int *rq_loc
 		return 0;
 }
 
-static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int bring_home) {
-	int res, rq_locked, vix, active_rqs, blnc_rqs;
+static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int numa_aware) {
+	int res, rq_locked, vix, active_rqs, blnc_rqs, bring_home;
 
 	/*
 	 * We are not allowed to steal jobs to this run queue
@@ -255,9 +259,12 @@ static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int bring_home) {
 	if (active_rqs > blnc_rqs)
 		active_rqs = blnc_rqs;
 
+
+
 	if (rq->ix < active_rqs) {
 
 		/* First try to steal from an inactive run queue... */
+		bring_home = (numa_aware) ? 1 : 0; // for inactive queues any process will do, but I'd rather bring processes home
 		if (active_rqs < blnc_rqs) {
 			int no = blnc_rqs - active_rqs;
 			int stop_ix = vix = active_rqs + rq->ix % no;
@@ -273,19 +280,23 @@ static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int bring_home) {
 			}
 		}
 
-		vix = rq->ix;
-
 		/* ... then try to steal a job from another active queue... */
-		while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
-			vix++;
-			if (vix >= active_rqs)
-				vix = 0;
-			if (vix == rq->ix)
-				break;
+		//We first try to find someone to bring home, if not possible,
+		//then we bring someone else
+		bring_home = (numa_aware) ? 2 : 0;
+		for (; bring_home >= 0; bring_home -= 2) {
+			vix = rq->ix;
+			while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
+				vix++;
+				if (vix >= active_rqs)
+					vix = 0;
+				if (vix == rq->ix)
+					break;
 
-			res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
-			if (res)
-				goto done;
+				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
+				if (res)
+					goto done;
+			}
 		}
 
 	}
