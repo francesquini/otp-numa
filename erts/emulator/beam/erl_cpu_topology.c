@@ -643,48 +643,67 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
 }
 
 int erts_init_scheduler_bind_type_string(char *how) {
-        if (sys_strcmp(how, "u") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_NONE;
-        else if (erts_bind_to_cpu(cpuinfo, -1) == -ENOTSUP)
-                return ERTS_INIT_SCHED_BIND_TYPE_NOT_SUPPORTED;
-        else if (!system_cpudata && !user_cpudata)
-                return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_CPU_TOPOLOGY;
-        else if (sys_strcmp(how, "db") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_DEFAULT_BIND;
-        else if (sys_strcmp(how, "s") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_SPREAD;
-        else if (sys_strcmp(how, "ps") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_PROCESSOR_SPREAD;
-        else if (sys_strcmp(how, "ts") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_THREAD_SPREAD;
-        else if (sys_strcmp(how, "tnnps") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_THREAD_NO_NODE_PROCESSOR_SPREAD;
-        else if (sys_strcmp(how, "nnps") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_NO_NODE_PROCESSOR_SPREAD;
-        else if (sys_strcmp(how, "nnts") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD;
-        else if (sys_strcmp(how, "ns") == 0)
-                cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
+    int skip = -1;
+    if (sys_strcmp(how, "u") == 0)
+        cpu_bind_order = ERTS_CPU_BIND_NONE;
+    else if (erts_bind_to_cpu(cpuinfo, -1) == -ENOTSUP)
+        return ERTS_INIT_SCHED_BIND_TYPE_NOT_SUPPORTED;
+    else if (!system_cpudata && !user_cpudata)
+        return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_CPU_TOPOLOGY;
+    else if (strncmp(how, "db", 2) == 0) {
+        skip = 2;
+        cpu_bind_order = ERTS_CPU_BIND_DEFAULT_BIND;
+    }
+    else if (strncmp(how, "s", 1) == 0) {
+        skip = 1;
+        cpu_bind_order = ERTS_CPU_BIND_SPREAD;
+    }
+    else if (strncmp(how, "ps", 2) == 0) {
+        skip = 2;
+        cpu_bind_order = ERTS_CPU_BIND_PROCESSOR_SPREAD;
+    }
+    else if (strncmp(how, "ts", 2) == 0) {
+        skip = 2;
+        cpu_bind_order = ERTS_CPU_BIND_THREAD_SPREAD;
+    }
+    else if (strncmp(how, "tnnps", 5) == 0) {
+        skip = 5;
+        cpu_bind_order = ERTS_CPU_BIND_THREAD_NO_NODE_PROCESSOR_SPREAD;
+    }
+    else if (strncmp(how, "nnps", 4) == 0) {
+        skip = 4;
+        cpu_bind_order = ERTS_CPU_BIND_NO_NODE_PROCESSOR_SPREAD;
+    }
+    else if (strncmp(how, "nnts", 4) == 0) {
+        skip = 4;
+        cpu_bind_order = ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD;
+    }
+    else if (strncmp(how, "ns", 2) == 0) {
+        skip = 2;
+        cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
+    } else
+        return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE;
 
-        //Alternative VM memory strategies
-        else if (sys_strcmp(how, "nsdf") == 0) {
-                cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
-                proc_mem_initialize(0, 1, 0);
-        } else if (sys_strcmp(how, "nsdfpp") == 0) {
-                cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
-                proc_mem_initialize(1, 1, 0);
-        } else if (sys_strcmp(how, "nsdfppv") == 0) {
-                cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
-                proc_mem_initialize(1, 1, 1);
-        } else if (sys_strcmp(how, "nspp") == 0) {
-                cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
-                proc_mem_initialize(1, 0, 0);
-        } else if (sys_strcmp(how, "spp") == 0) {
-                cpu_bind_order = ERTS_CPU_BIND_SPREAD;
-                proc_mem_initialize(1, 0, 0);
-        } else
-                return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE;
-        return ERTS_INIT_SCHED_BIND_TYPE_SUCCESS;
+    //Alternative VM memory strategies
+    if (skip != -1) {
+        int df, pp, v;
+        df = pp = v = 0;
+        if (strncmp(how + skip, "df", 2) == 0) {
+            skip += 2;
+            df = 1;
+        }
+        if (strncmp(how + skip, "pp", 2) == 0) {
+            skip += 2;
+            pp = 1;
+        }
+        if (strncmp(how + skip, "v", 1) == 0) {
+            skip += 1;
+            v = 1;
+        }
+        proc_mem_initialize(pp, df, v);
+    }
+
+    return ERTS_INIT_SCHED_BIND_TYPE_SUCCESS;
 }
 
 static Eterm
