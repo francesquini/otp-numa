@@ -4295,11 +4295,12 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
 	return erts_bind_schedulers(BIF_P, BIF_ARG_2);
     }
 #ifdef ERTS_SMP
-    else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
-    	int ret = proc_sched_get_initial_placement_strategy();
+    else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy_hub", BIF_ARG_1) || ERTS_IS_ATOM_STR("scheduler_ip_strategy_regular", BIF_ARG_1)) {
+    	int hub = ERTS_IS_ATOM_STR("scheduler_ip_strategy_hub", BIF_ARG_1);
+        int ret = proc_sched_get_initial_placement_strategy(hub);
     	if (is_small(BIF_ARG_2)) {
     		int newVal = signed_val(BIF_ARG_2);
-			proc_sched_set_initial_placement_strategy(newVal);
+			proc_sched_set_initial_placement_strategy(newVal, hub);
 			BIF_RET(make_small(ret));
     	} else if (is_tuple(BIF_ARG_2)) {
     		Eterm operation, str, after;
@@ -4310,7 +4311,7 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     		after = tp3[3];
     		if (!ERTS_IS_ATOM_STR("after", operation) || !is_small(str) || !is_small(after))
     			goto error;
-       		proc_sched_set_initial_placement_strategy_after(signed_val(str), unsigned_val(after));
+       		proc_sched_set_initial_placement_strategy_after(signed_val(str), unsigned_val(after), hub);
     		BIF_RET(make_small(ret));
     	} else {
     		goto error;
@@ -4337,15 +4338,6 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     		set_hub_process(BIF_P, 1);
     	else if (BIF_ARG_2 == am_false)
     		set_hub_process(BIF_P, 0);
-    	else
-    		goto error;
-    	BIF_RET(before ? am_true : am_false);
-    } else if (ERTS_IS_ATOM_STR("scheduler_hubs_only", BIF_ARG_1)) {
-    	byte before = proc_sched_hubs_only();
-    	if (BIF_ARG_2 == am_true)
-    		proc_sched_set_hubs_only(1);
-    	else if (BIF_ARG_2 == am_false)
-    		proc_sched_set_hubs_only(0);
     	else
     		goto error;
     	BIF_RET(before ? am_true : am_false);

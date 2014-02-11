@@ -43,14 +43,10 @@ ERTS_INLINE static void proc_sched_ip_random_initialize(void) {
 
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_random(Process* process, Process* parent) {
 	unsigned int rand, scheduler;
-	if (!proc_sched_hubs_only() || process->hub) {
-		proc_sched_ip_random_initialize();
-		rand = rand_r(&proc_sched_ip_random_seed);
-		scheduler = rand % erts_no_run_queues;
-		return ERTS_RUNQ_IX(scheduler);
-	} else {
-		return proc_sched_ip_default(process, parent);
-	}
+	proc_sched_ip_random_initialize();
+	rand = rand_r(&proc_sched_ip_random_seed);
+	scheduler = rand % erts_no_run_queues;
+	return ERTS_RUNQ_IX(scheduler);
 }
 
 
@@ -96,12 +92,8 @@ ERTS_INLINE static unsigned int simple_rng_next(unsigned int mod) {
 
 
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_simple_random(Process* process, Process* parent) {
-	if (!proc_sched_hubs_only() || process->hub) {
-		simple_rng_initialize();
-		return ERTS_RUNQ_IX(simple_rng_next(erts_no_run_queues)) ;
-	} else {
-		return proc_sched_ip_default(process, parent);
-	}
+	simple_rng_initialize();
+	return ERTS_RUNQ_IX(simple_rng_next(erts_no_run_queues)) ;
 }
 
 /***************************
@@ -113,13 +105,9 @@ ERTS_INLINE ErtsRunQueue* proc_sched_ip_simple_random(Process* process, Process*
 static unsigned long long proc_sched_ip_circular_next = 0;
 
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_circular(Process* process, Process* parent) {
-	if (!proc_sched_hubs_only() || process->hub) {
-		unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
-		unsigned long long next = nextBig % erts_no_run_queues;
-		return ERTS_RUNQ_IX(next) ;
-	} else {
-		return proc_sched_ip_default(process, parent);
-	}
+	unsigned long long nextBig = __sync_fetch_and_add(&proc_sched_ip_circular_next, 1);
+	unsigned long long next = nextBig % erts_no_run_queues;
+	return ERTS_RUNQ_IX(next) ;
 }
 
 /***************************
@@ -131,12 +119,8 @@ ERTS_INLINE ErtsRunQueue* proc_sched_ip_circular(Process* process, Process* pare
 static __thread unsigned int local_circular_next = 0;
 
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_local_circular(Process* process, Process* parent) {
-	if (!proc_sched_hubs_only() || process->hub) {
-		local_circular_next = (local_circular_next + 1) % erts_no_run_queues;
-		return ERTS_RUNQ_IX(local_circular_next);
-	} else {
-		return proc_sched_ip_default(process, parent);
-	}
+	local_circular_next = (local_circular_next + 1) % erts_no_run_queues;
+	return ERTS_RUNQ_IX(local_circular_next);
 }
 
 
@@ -173,22 +157,13 @@ static ERTS_INLINE void proc_sched_ip_scatter_initialize(void) {
 	}
 }
 
-#endif
-
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_scatter(Process* process, Process* parent) {
-#ifdef ERTS_SMP	
-	if (!proc_sched_hubs_only() || process->hub) {
-		int next;
-		proc_sched_ip_scatter_initialize();
-		next = __sync_fetch_and_add(&proc_sched_ip_scatter_next, 1) % proc_sched_ip_scatter_size;		
-		return ERTS_RUNQ_IX(proc_sched_ip_scatter_list[next]);
-	} else {
-#endif
-		return proc_sched_ip_default(process, parent);
-#ifdef ERTS_SMP		
-	}
-#endif	
+	int next;
+	proc_sched_ip_scatter_initialize();
+	next = __sync_fetch_and_add(&proc_sched_ip_scatter_next, 1) % proc_sched_ip_scatter_size;		
+	return ERTS_RUNQ_IX(proc_sched_ip_scatter_list[next]);
 }
+#endif
 
 
 /***************************
@@ -222,20 +197,10 @@ static ERTS_INLINE void proc_sched_ip_compact_initialize(void) {
 	}
 }
 
-#endif
-
-
 ERTS_INLINE ErtsRunQueue* proc_sched_ip_compact(Process* process, Process* parent) {
-#ifdef ERTS_SMP
-	if (!proc_sched_hubs_only() || process->hub) {
-		int next;		
-		proc_sched_ip_compact_initialize();
-		next = __sync_fetch_and_add(&proc_sched_ip_compact_next, 1) % proc_sched_ip_compact_size; 
-		return ERTS_RUNQ_IX(proc_sched_ip_compact_list[next]);
-	} else {
-#endif		
-		return proc_sched_ip_default(process, parent);
-#ifdef ERTS_SMP		
-	}
-#endif
+	int next;		
+	proc_sched_ip_compact_initialize();
+	next = __sync_fetch_and_add(&proc_sched_ip_compact_next, 1) % proc_sched_ip_compact_size; 
+	return ERTS_RUNQ_IX(proc_sched_ip_compact_list[next]);	
 }
+#endif		

@@ -6731,7 +6731,7 @@ Eterm erl_create_process(Process* parent, /* Parent of process (default group le
 	if (heap_need < p->min_heap_size) {
 		sz = heap_need = p->min_heap_size;
 	} else {
-		sz = erts_next_heap_size(heap_need, 0);
+		sz = erts_next_heap_size(heap_need, 0); 
 	}
 
 #ifdef HIPE

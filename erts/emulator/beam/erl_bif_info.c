@@ -2695,8 +2695,10 @@ BIF_RET(make_small(n));
 	else if (ERTS_IS_ATOM_STR("thread_progress", BIF_ARG_1)) {
 		erts_thr_progress_dbg_print_state();
 		BIF_RET(am_true);
-	} else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy", BIF_ARG_1)) {
-		BIF_RET(make_small(proc_sched_get_initial_placement_strategy()));
+	} else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy_hub", BIF_ARG_1)) {
+		BIF_RET(make_small(proc_sched_get_initial_placement_strategy(1)));
+    } else if (ERTS_IS_ATOM_STR("scheduler_ip_strategy_regular", BIF_ARG_1)) {
+        BIF_RET(make_small(proc_sched_get_initial_placement_strategy(0)));        
 	} else if (ERTS_IS_ATOM_STR("scheduler_migration_strategy", BIF_ARG_1)) {
 		BIF_RET(make_small(proc_sched_get_migration_strategy()));
 	} else if (ERTS_IS_ATOM_STR("scheduler_ws_strategy", BIF_ARG_1)) {
@@ -2707,8 +2709,6 @@ BIF_RET(make_small(n));
 		BIF_RET(hub_processes_list(BIF_P));
 	} else if (ERTS_IS_ATOM_STR("hub_processes_count", BIF_ARG_1)) {
 		BIF_RET(make_small(hub_processes_count()));
-	} else if (ERTS_IS_ATOM_STR("scheduler_hubs_only", BIF_ARG_1)) {
-		BIF_RET(proc_sched_hubs_only() ? am_true : am_false);
 	} else if (ERTS_IS_ATOM_STR("proc_mem_state", BIF_ARG_1)) {
 		BIF_RET(make_small(proc_mem_state()));
 	}

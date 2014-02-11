@@ -14,8 +14,6 @@
  ****************************************************/
 
 void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online);
-byte proc_sched_hubs_only(void);
-byte proc_sched_set_hubs_only(byte bool);
 
 /****************************************************
  ****************************************************
@@ -34,10 +32,10 @@ typedef enum enum_proc_sched_ip_strategy {
 	PROC_SCHED_IP_COMPACT = 6
 } proc_sched_ip_strategy;
 
-void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
-void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb);
+void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy, int hub);
+void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb, int hub);
 
-int proc_sched_get_initial_placement_strategy(void);
+int proc_sched_get_initial_placement_strategy(int hub);
 
 ErtsRunQueue* proc_sched_initial_placement (Process* process, Process* parent);
 

@@ -10,7 +10,7 @@
 ERTS_INLINE static void proc_sched_ip_initialize(void);
 ERTS_INLINE static void proc_sched_cb_initialize(void);
 ERTS_INLINE static void proc_sched_ws_initialize(void);
-ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy);
+ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy, int hub);
 ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy);
 ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strategy strategy);
 ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
@@ -21,24 +21,11 @@ ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
  ***********************************
  ***********************************/
 
-static byte PROC_SCHED_HUBS_ONLY;
-
 ERTS_INLINE void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online) {
-	PROC_SCHED_HUBS_ONLY = 0;
 	proc_sched_ip_initialize();
 	proc_sched_cb_initialize();
 	proc_sched_ws_initialize();
 	proc_sched_migrate_initialize(nQueues, no_schedulers, no_schedulers_online);
-}
-
-ERTS_INLINE byte proc_sched_hubs_only(void) {
-	return PROC_SCHED_HUBS_ONLY;
-}
-
-ERTS_INLINE byte proc_sched_set_hubs_only(byte bool) {
-	byte old = PROC_SCHED_HUBS_ONLY;
-	PROC_SCHED_HUBS_ONLY = bool;
-	return old;
 }
 
 /***************************
@@ -47,11 +34,12 @@ ERTS_INLINE byte proc_sched_set_hubs_only(byte bool) {
  ***************************
  ***************************/
 
-
 static Uint SCHEDULED_IP_CHANGEMENT;
 static byte SCHEDULED_IP_STRATEGY;
+static int SCHEDULED_IP_CHANGEMENT_TYPE_HUB;
 
-static byte PROC_SCHED_CURRENT_IP_STRATEGY;
+static byte PROC_SCHED_CURRENT_IP_STRATEGY_HUB;
+static byte PROC_SCHED_CURRENT_IP_STRATEGY_REGULAR;
 static ErtsRunQueue *(*PROC_SCHED_CURRENT_IP_STRATEGY_FUN[7])(Process*, Process*);
 
 ERTS_INLINE static void proc_sched_ip_initialize(void) {
@@ -60,32 +48,38 @@ ERTS_INLINE static void proc_sched_ip_initialize(void) {
 
 	//DON'T FORGET TO CHANGE THE ARRAY SIZE!!! 
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_DEFAULT] = &proc_sched_ip_default; //0
+#ifdef ERTS_SMP	
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_RANDOM] = &proc_sched_ip_random;  //1
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_CIRCULAR] = &proc_sched_ip_circular; //2
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_SIMPLE_RANDOM] = &proc_sched_ip_simple_random; //3
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_LOCAL_CIRCULAR] = &proc_sched_ip_local_circular; //4
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_SCATTER] = &proc_sched_ip_scatter; //5
 	PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_IP_COMPACT] = &proc_sched_ip_compact; //6
-
-	internal_proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT);
+#endif
+	internal_proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT, 0);//regular
+	internal_proc_sched_set_initial_placement_strategy(PROC_SCHED_IP_DEFAULT, 1);//hub
 }
 
 
-ERTS_INLINE void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
-	if (strategy == PROC_SCHED_CURRENT_IP_STRATEGY) return;
-	internal_proc_sched_set_initial_placement_strategy (strategy);
+ERTS_INLINE void proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy, int hub) {
+	if ((hub && strategy != PROC_SCHED_CURRENT_IP_STRATEGY_HUB) ||
+		(!hub && strategy!= PROC_SCHED_CURRENT_IP_STRATEGY_REGULAR))
+			internal_proc_sched_set_initial_placement_strategy(strategy, hub);
 }
 
-ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy) {
+ERTS_INLINE static void internal_proc_sched_set_initial_placement_strategy (proc_sched_ip_strategy strategy, int hub) {
 #ifdef USE_VM_PROBES
 	//if (DTRACE_ENABLED(scheduler_ip_change))
 	DTRACE1(scheduler_ip_strategy_change, strategy);
 #endif
-	PROC_SCHED_CURRENT_IP_STRATEGY = strategy & 0xFF;
+	if (hub) 
+		PROC_SCHED_CURRENT_IP_STRATEGY_HUB = strategy & 0xFF;
+	else
+		PROC_SCHED_CURRENT_IP_STRATEGY_REGULAR = strategy & 0xFF;
 }
 
 
-ERTS_INLINE void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb) {
+ERTS_INLINE void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_strategy str, int after_no_cb, int hub) {
 	Uint n = 0;
 #ifdef ERTS_SMP
 	erts_smp_mtx_lock(&balance_info.update_mtx);
@@ -96,6 +90,7 @@ ERTS_INLINE void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_s
 	} else {
 		SCHEDULED_IP_STRATEGY = str;
 		SCHEDULED_IP_CHANGEMENT = n + after_no_cb;
+		SCHEDULED_IP_CHANGEMENT_TYPE_HUB = hub;
 	}
 #ifdef ERTS_SMP
 	erts_smp_mtx_unlock(&balance_info.update_mtx);
@@ -103,13 +98,19 @@ ERTS_INLINE void proc_sched_set_initial_placement_strategy_after(proc_sched_ip_s
 }
 
 
-ERTS_INLINE int proc_sched_get_initial_placement_strategy(void) {
-	return PROC_SCHED_CURRENT_IP_STRATEGY;
+ERTS_INLINE int proc_sched_get_initial_placement_strategy(int hub) {
+	if (hub)
+		return PROC_SCHED_CURRENT_IP_STRATEGY_HUB;
+	else
+		return PROC_SCHED_CURRENT_IP_STRATEGY_REGULAR;
 }
 
 
 ERTS_INLINE ErtsRunQueue *proc_sched_initial_placement (Process* process, Process* parent) {
-	return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY](process, parent);
+	if (process->hub)
+		return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY_HUB](process, parent);
+	else
+		return PROC_SCHED_CURRENT_IP_STRATEGY_FUN[PROC_SCHED_CURRENT_IP_STRATEGY_REGULAR](process, parent);
 }
 
 
@@ -248,7 +249,7 @@ ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs) {
 	if (SCHEDULED_IP_CHANGEMENT < cbs) {
 		erts_smp_mtx_lock(&balance_info.update_mtx);
 		if (SCHEDULED_IP_CHANGEMENT < cbs) { //it might have changed
-			proc_sched_set_initial_placement_strategy(SCHEDULED_IP_STRATEGY);
+			proc_sched_set_initial_placement_strategy(SCHEDULED_IP_STRATEGY, SCHEDULED_IP_CHANGEMENT_TYPE_HUB);
 			SCHEDULED_IP_CHANGEMENT = INT_MAX;
 		}
 		erts_smp_mtx_unlock(&balance_info.update_mtx);
