@@ -84,6 +84,19 @@ void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq) {
 #endif
 }
 
+Process* proc_sched_migrate_default_immigration_candidate(ErtsRunQueue* from_rq, int priority) {
+	Process *proc;
+    ErtsRunPrioQueue *from_rpq;
+    from_rpq = priority == PRIORITY_LOW ?
+        &from_rq->procs.prio[PRIORITY_NORMAL] :
+        &from_rq->procs.prio[priority];
+    //default strategy
+    for (proc = from_rpq->first; proc; proc = proc->next)
+        if (proc->prio == priority && !proc->bound_runq)
+            return proc;
+    return NULL;
+}
+
 /***************************
  ***************************
  * Disabled
@@ -98,6 +111,35 @@ Uint proc_sched_migrate_disabled_cb(ErtsRunQueue* rq) {
 void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* ign) {
 	//nothing to be done
 }
+
+Process* proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue* rq, int priority) {
+	//should never be here
+	return NULL;
+}
+
+
+/***************************
+ ***************************
+ * NUMA Aware
+ ***************************
+ ***************************/
+//check balance and immigrate remain the same
+//just the choice of the migrated actor is changed
+
+Uint proc_sched_migrate_numa_cb(ErtsRunQueue* rq) {
+	return proc_sched_migrate_default_cb(rq);
+}
+
+void proc_sched_migrate_numa_immigrate(ErtsRunQueue* rq) {
+	proc_sched_migrate_default_immigrate(rq);
+}
+
+Process* proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue* rq, int priority) {
+	exit(42);
+	return NULL; 
+}
+
+
 
 /***************************************************************************************
  * Default implementation

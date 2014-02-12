@@ -125,12 +125,12 @@ static proc_sched_migration_strategy PROC_SCHED_CURRENT_MIGRATION_STRATEGY;
 static Uint (*PROC_SCHED_CURR_MIGR_STG_CB_FUN)(ErtsRunQueue *);
 //immigration
 static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *);
-
+//emigration
+static Process* (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN)(ErtsRunQueue *, int);
 
 ERTS_INLINE static void proc_sched_cb_initialize(void) {
 	internal_proc_sched_set_migration_strategy(PROC_SCHED_MIGRATION_DEFAULT);
 }
-
 
 ERTS_INLINE void proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	if (PROC_SCHED_CURRENT_MIGRATION_STRATEGY == strategy) return;
@@ -139,16 +139,23 @@ ERTS_INLINE void proc_sched_set_migration_strategy(proc_sched_migration_strategy
 
 ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_migration_strategy strategy) {
 	switch (strategy) {
-	case PROC_SCHED_MIGRATION_DEFAULT:
-		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
-		PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;
-		break;
-	case PROC_SCHED_MIGRATION_DISABLED:
-		PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
-		PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
-		break;
-	default:
-		return;
+		case PROC_SCHED_MIGRATION_DEFAULT:
+			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;			
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_default_immigration_candidate;
+			break;
+		case PROC_SCHED_MIGRATION_DISABLED:
+			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_disabled_immigration_candidate;
+			break;
+		case PROC_SCHED_MIGRATION_NUMA_AWARE:
+			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_numa_cb; 
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_numa_immigrate;
+			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_numa_immigration_candidate;
+			break;
+		default:
+			return;
 	}
 #ifdef USE_VM_PROBES
 	DTRACE1(scheduler_cb_strategy_change, strategy);
@@ -175,6 +182,10 @@ ERTS_INLINE void proc_sched_check_balance (ErtsRunQueue *rq) {
 
 ERTS_INLINE void proc_sched_immigrate (ErtsRunQueue *rq) {
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
+}
+
+ERTS_INLINE Process* proc_sched_immigration_candidate (ErtsRunQueue *rq, int priority) {
+	return PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN(rq, priority);
 }
 
 

@@ -49,7 +49,8 @@ ErtsRunQueue* proc_sched_initial_placement (Process* process, Process* parent);
 /* Possible migration strategies */
 typedef enum enum_proc_sched_migration_strategy {
 	PROC_SCHED_MIGRATION_DEFAULT = 0,
-	PROC_SCHED_MIGRATION_DISABLED = 1
+	PROC_SCHED_MIGRATION_DISABLED = 1,
+	PROC_SCHED_MIGRATION_NUMA_AWARE = 2
 } proc_sched_migration_strategy;
 
 void proc_sched_set_migration_strategy(proc_sched_migration_strategy);
@@ -57,6 +58,7 @@ int proc_sched_get_migration_strategy(void);
 
 void proc_sched_check_balance (ErtsRunQueue*);
 void proc_sched_immigrate (ErtsRunQueue*);
+Process *proc_sched_immigration_candidate(ErtsRunQueue*, int priority);
 
 
 

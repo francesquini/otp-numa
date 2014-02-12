@@ -20,11 +20,20 @@ ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, Uint no_schedulers,
 #  error default_check_balance() assumes ERTS_MAX_PROCESS < (1 << 27)
 #endif
 
-Uint proc_sched_migrate_default_cb(ErtsRunQueue* rq);
-void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
+//Default Strategy
+Uint     proc_sched_migrate_default_cb(ErtsRunQueue* rq);
+void     proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
+Process *proc_sched_migrate_default_immigration_candidate(ErtsRunQueue* rq, int priority);
 
-Uint proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
-void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* rq);
+//Disabled Strategy
+Uint     proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
+void     proc_sched_migrate_disabled_immigrate(ErtsRunQueue* rq);
+Process *proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue* rq, int priority);
+
+//NUMA Strategy
+Uint     proc_sched_migrate_numa_cb(ErtsRunQueue* rq);
+void     proc_sched_migrate_numa_immigrate(ErtsRunQueue* rq);
+Process *proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue* rq, int priority);
 
 #ifdef ERTS_SMP
 typedef struct struct_balance_info {

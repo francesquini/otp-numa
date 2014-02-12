@@ -2478,77 +2478,66 @@ ErtsRunQueue *erts_prepare_emigrate(ErtsRunQueue *c_rq, ErtsRunQueueInfo *c_rqi,
 }
 
 void immigrate(ErtsRunQueue *rq) {
-	int prio;
+    int prio;
 
-	ASSERT(rq->flags & ERTS_RUNQ_FLGS_IMMIGRATE_QMASK);
+    ASSERT(rq->flags & ERTS_RUNQ_FLGS_IMMIGRATE_QMASK);
 
-	for (prio = 0; prio < ERTS_NO_PRIO_LEVELS; prio++) {
-		if (ERTS_CHK_RUNQ_FLG_IMMIGRATE(rq->flags, prio)) {
-			ErtsRunQueueInfo *rqi = (
-					prio == ERTS_PORT_PRIO_LEVEL ?
-							&rq->ports.info : &rq->procs.prio_info[prio]);
-			ErtsRunQueue *from_rq = rqi->migrate.runq;
-			int rq_locked, from_rq_locked;
+    for (prio = 0; prio < ERTS_NO_PRIO_LEVELS; prio++) {
+        if (ERTS_CHK_RUNQ_FLG_IMMIGRATE(rq->flags, prio)) {
+            ErtsRunQueueInfo *rqi = (
+                prio == ERTS_PORT_PRIO_LEVEL ?
+                &rq->ports.info : &rq->procs.prio_info[prio]);
+            ErtsRunQueue *from_rq = rqi->migrate.runq;
+            int rq_locked, from_rq_locked;
 
-			ERTS_DBG_VERIFY_VALID_RUNQP(from_rq);
+            ERTS_DBG_VERIFY_VALID_RUNQP(from_rq);
 
-			rq_locked = 1;
-			from_rq_locked = 1;
-			erts_smp_xrunq_lock(rq, from_rq);
-			/*
-			 * erts_smp_xrunq_lock() may release lock on rq! We have
-			 * to check that we still want to immigrate from the same
-			 * run queue as before.
-			 */
-			if (ERTS_CHK_RUNQ_FLG_IMMIGRATE(rq->flags, prio)
-					&& from_rq == rqi->migrate.runq) {
-				ErtsRunQueueInfo *from_rqi = (
-						prio == ERTS_PORT_PRIO_LEVEL ?
-								&from_rq->ports.info :
-								&from_rq->procs.prio_info[prio]);
-				if ((ERTS_CHK_RUNQ_FLG_EVACUATE(rq->flags, prio)
-						&& ERTS_CHK_RUNQ_FLG_EVACUATE(from_rq->flags, prio)
-						&& from_rqi->len)
-						|| (from_rqi->len > rqi->migrate.limit.other
-								&& rqi->len < rqi->migrate.limit.this)) {
-					if (prio == ERTS_PORT_PRIO_LEVEL) {
-						Port *prt = from_rq->ports.start;
-						if (prt) {
-							int prt_locked = 0;
-							(void) erts_port_migrate(prt, &prt_locked, from_rq,
-									&from_rq_locked, rq, &rq_locked);
-							if (prt_locked)
-								erts_smp_port_unlock(prt);
-						}
-					} else {
-						Process *proc;
-						ErtsRunPrioQueue *from_rpq;
-						from_rpq = (
-								prio == PRIORITY_LOW ?
-										&from_rq->procs.prio[PRIORITY_NORMAL] :
-										&from_rq->procs.prio[prio]);
-						for (proc = from_rpq->first; proc; proc = proc->next)
-							if (proc->prio == prio && !proc->bound_runq)
-								break;
-						if (proc) {
-							ErtsProcLocks proc_locks = 0;
-							(void) erts_proc_migrate(proc, &proc_locks, from_rq,
-									&from_rq_locked, rq, &rq_locked);
-							if (proc_locks)
-								erts_smp_proc_unlock(proc, proc_locks);
-						}
-					}
-				} else {
-					ERTS_UNSET_RUNQ_FLG_IMMIGRATE(rq->flags, prio);
-					ERTS_DBG_SET_INVALID_RUNQP(rqi->migrate.runq, 0x1);
-				}
-			}
-			if (from_rq_locked)
-				erts_smp_runq_unlock(from_rq);
-			if (!rq_locked)
-				erts_smp_runq_lock(rq);
-		}
-	}
+            rq_locked = 1;
+            from_rq_locked = 1;
+            erts_smp_xrunq_lock(rq, from_rq);
+            /*
+            * erts_smp_xrunq_lock() may release lock on rq! We have
+            * to check that we still want to immigrate from the same
+            * run queue as before.
+            */
+            if (ERTS_CHK_RUNQ_FLG_IMMIGRATE(rq->flags, prio) && from_rq == rqi->migrate.runq) {
+                ErtsRunQueueInfo *from_rqi = (
+                    prio == ERTS_PORT_PRIO_LEVEL ?
+                    &from_rq->ports.info :
+                    &from_rq->procs.prio_info[prio]);
+                if ((ERTS_CHK_RUNQ_FLG_EVACUATE(rq->flags, prio)
+                    && ERTS_CHK_RUNQ_FLG_EVACUATE(from_rq->flags, prio)
+                    && from_rqi->len)
+                    || (from_rqi->len > rqi->migrate.limit.other
+                        && rqi->len < rqi->migrate.limit.this)) {
+                        if (prio == ERTS_PORT_PRIO_LEVEL) {
+                            Port *prt = from_rq->ports.start;
+                            if (prt) {
+                                int prt_locked = 0;
+                                (void) erts_port_migrate(prt, &prt_locked, from_rq, &from_rq_locked, rq, &rq_locked);
+                                if (prt_locked)
+                                    erts_smp_port_unlock(prt);
+                            }
+                        } else {
+                            Process *proc = proc_sched_immigration_candidate(from_rq, prio);
+                            if (proc) {
+                                ErtsProcLocks proc_locks = 0;
+                                (void) erts_proc_migrate(proc, &proc_locks, from_rq, &from_rq_locked, rq, &rq_locked);
+                                if (proc_locks)
+                                    erts_smp_proc_unlock(proc, proc_locks);
+                            }
+                        }
+                } else {
+                    ERTS_UNSET_RUNQ_FLG_IMMIGRATE(rq->flags, prio);
+                    ERTS_DBG_SET_INVALID_RUNQP(rqi->migrate.runq, 0x1);
+                }
+            }
+            if (from_rq_locked)
+                erts_smp_runq_unlock(from_rq);
+            if (!rq_locked)
+                erts_smp_runq_lock(rq);
+        }
+    }
 }
 
 static void
