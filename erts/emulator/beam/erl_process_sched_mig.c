@@ -1,4 +1,6 @@
 #include "erl_process_sched_mig.h"
+#include "erl_process_sched_ws.h"
+
 
 /*This file contains the implementation of the migration strategies*/
 
@@ -84,7 +86,7 @@ void proc_sched_migrate_default_immigrate(ErtsRunQueue* rq) {
 #endif
 }
 
-Process* proc_sched_migrate_default_immigration_candidate(ErtsRunQueue* from_rq, int priority) {
+Process* proc_sched_migrate_default_immigration_candidate(ErtsRunQueue* from_rq, int priority, ErtsRunQueue* to_rq) {
 	Process *proc;
     ErtsRunPrioQueue *from_rpq;
     from_rpq = priority == PRIORITY_LOW ?
@@ -112,7 +114,7 @@ void proc_sched_migrate_disabled_immigrate(ErtsRunQueue* ign) {
 	//nothing to be done
 }
 
-Process* proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue* rq, int priority) {
+Process* proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue* rq, int priority, ErtsRunQueue* to_rq) {
 	//should never be here
 	return NULL;
 }
@@ -134,9 +136,26 @@ void proc_sched_migrate_numa_immigrate(ErtsRunQueue* rq) {
 	proc_sched_migrate_default_immigrate(rq);
 }
 
-Process* proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue* rq, int priority) {
-	exit(42);
-	return NULL; 
+Process* proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue* from_rq, int priority, ErtsRunQueue *to_rq) {
+	Process *proc = NULL;
+    ErtsRunPrioQueue *from_rpq;
+
+#ifdef ERTS_SMP	
+	//only accepts processes coming home with any priority
+	proc = find_proc_to_steal_from_victim (to_rq, from_rq, 2, PRIORITY_DONT_CARE); 
+	if (proc) return proc;
+#endif
+	
+	//no one coming home? Anything will do...
+    from_rpq = priority == PRIORITY_LOW ?
+        &from_rq->procs.prio[PRIORITY_NORMAL] :
+        &from_rq->procs.prio[priority];
+    //Top of the queue
+    for (proc = from_rpq->first; proc; proc = proc->next)
+        if (proc->prio == priority && !proc->bound_runq)
+            return proc;
+
+    return NULL;
 }
 
 

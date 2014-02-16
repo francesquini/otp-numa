@@ -58,7 +58,7 @@ int proc_sched_get_migration_strategy(void);
 
 void proc_sched_check_balance (ErtsRunQueue*);
 void proc_sched_immigrate (ErtsRunQueue*);
-Process *proc_sched_immigration_candidate(ErtsRunQueue*, int priority);
+Process *proc_sched_immigration_candidate(ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq);
 
 
 

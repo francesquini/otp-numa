@@ -2519,7 +2519,7 @@ void immigrate(ErtsRunQueue *rq) {
                                     erts_smp_port_unlock(prt);
                             }
                         } else {
-                            Process *proc = proc_sched_immigration_candidate(from_rq, prio);
+                            Process *proc = proc_sched_immigration_candidate(from_rq, prio, rq);
                             if (proc) {
                                 ErtsProcLocks proc_locks = 0;
                                 (void) erts_proc_migrate(proc, &proc_locks, from_rq, &from_rq_locked, rq, &rq_locked);

@@ -126,7 +126,7 @@ static Uint (*PROC_SCHED_CURR_MIGR_STG_CB_FUN)(ErtsRunQueue *);
 //immigration
 static void (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN)(ErtsRunQueue *);
 //emigration
-static Process* (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN)(ErtsRunQueue *, int);
+static Process* (*PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN)(ErtsRunQueue *, int, ErtsRunQueue *);
 
 ERTS_INLINE static void proc_sched_cb_initialize(void) {
 	internal_proc_sched_set_migration_strategy(PROC_SCHED_MIGRATION_DEFAULT);
@@ -184,8 +184,9 @@ ERTS_INLINE void proc_sched_immigrate (ErtsRunQueue *rq) {
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
 }
 
-ERTS_INLINE Process* proc_sched_immigration_candidate (ErtsRunQueue *rq, int priority) {
-	return PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN(rq, priority);
+ERTS_INLINE Process* proc_sched_immigration_candidate (ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq) {
+	printf("\nLB_IM_CAND\n");
+	return PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN(from_rq, priority, to_rq);
 }
 
 

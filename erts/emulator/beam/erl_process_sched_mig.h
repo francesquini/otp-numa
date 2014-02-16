@@ -23,17 +23,17 @@ ERTS_INLINE void proc_sched_migrate_initialize(Uint nQueues, Uint no_schedulers,
 //Default Strategy
 Uint     proc_sched_migrate_default_cb(ErtsRunQueue* rq);
 void     proc_sched_migrate_default_immigrate(ErtsRunQueue* rq);
-Process *proc_sched_migrate_default_immigration_candidate(ErtsRunQueue* rq, int priority);
+Process *proc_sched_migrate_default_immigration_candidate(ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq);
 
 //Disabled Strategy
 Uint     proc_sched_migrate_disabled_cb(ErtsRunQueue* rq);
 void     proc_sched_migrate_disabled_immigrate(ErtsRunQueue* rq);
-Process *proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue* rq, int priority);
+Process *proc_sched_migrate_disabled_immigration_candidate(ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq);
 
 //NUMA Strategy
 Uint     proc_sched_migrate_numa_cb(ErtsRunQueue* rq);
 void     proc_sched_migrate_numa_immigrate(ErtsRunQueue* rq);
-Process *proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue* rq, int priority);
+Process *proc_sched_migrate_numa_immigration_candidate(ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq);
 
 #ifdef ERTS_SMP
 typedef struct struct_balance_info {

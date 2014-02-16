@@ -107,6 +107,7 @@ extern int erts_sched_thread_suggested_stack_size;
 #endif
 
 /* process priorities */
+#define PRIORITY_DONT_CARE   -1
 #define PRIORITY_MAX          0
 #define PRIORITY_HIGH         1
 #define PRIORITY_NORMAL       2

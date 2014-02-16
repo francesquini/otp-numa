@@ -11,4 +11,7 @@ int proc_sched_ws_default(ErtsRunQueue* rq);
 int proc_sched_ws_disabled(ErtsRunQueue* rq);
 int proc_sched_ws_numa_aware(ErtsRunQueue* rq);
 
+ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home, int priority);
+
+
 #endif

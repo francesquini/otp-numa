@@ -52,14 +52,15 @@ ERTS_INLINE int proc_sched_ws_numa_aware(ErtsRunQueue* rq) {
 #ifdef ERTS_SMP
 
 
-static ERTS_INLINE Process* find_foreign_process_to_steal_from_victim(ErtsRunQueue *rq, ErtsRunQueue *vrq) {
+static ERTS_INLINE Process* find_foreign_process_to_steal_from_victim(ErtsRunQueue *rq, ErtsRunQueue *vrq, int priority) {
 	int my_node = rq->numa_node;
 	ProcessLinkedList* cell = vrq->foreign_process_list_head[my_node]->next;
 	while (cell) {
 		Process *p = cell->p;
 		if (!p->bound_runq && //not bound
 			!(p->runq_flags & ERTS_PROC_RUNQ_FLG_RUNNING) && //not running
-			(p->status_flags & ERTS_PROC_SFLG_INRUNQ)) //in the RQ
+			(p->status_flags & ERTS_PROC_SFLG_INRUNQ) && //in the RQ
+			((priority == PRIORITY_DONT_CARE) || (p->prio == priority))) //right priority
 			return p;
 		cell = cell->next;
 	}
@@ -123,12 +124,14 @@ static ERTS_INLINE Process* find_regular_process_to_steal_from_victim(ErtsRunQue
  * 0 - Any process will do
  * 1 - Try to bring home first, and then if not possible, any process
  * 2 - Only accept processes coming home
+ * 
+ * The priority is only used for bringing process home.
  */
-static ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home) {
+ERTS_INLINE Process* find_proc_to_steal_from_victim (ErtsRunQueue *rq, ErtsRunQueue *vrq, int bring_home, int priority) {
 	Process* proc = NULL;
 	
 	if (bring_home) { //bring home: 1 or 2
-		proc = find_foreign_process_to_steal_from_victim(rq, vrq);
+		proc = find_foreign_process_to_steal_from_victim(rq, vrq, priority);
 //		if (proc) fprintf(stderr, "%d -> %d Work Stealing BRING HOME: %d Found: %p\n", vrq->ix, rq->ix, bring_home, proc); fflush(stderr);
 	}
 
@@ -156,7 +159,7 @@ static ERTS_INLINE int try_steal_task_from_victim(ErtsRunQueue *rq, int *rq_lock
 	if (rq->halt_in_progress)
 		goto try_steal_port;
 
-	proc = find_proc_to_steal_from_victim (rq, vrq, bring_home);
+	proc = find_proc_to_steal_from_victim (rq, vrq, bring_home, PRIORITY_DONT_CARE);
 
 	if (proc) {
 		ErtsProcLocks proc_locks = 0;
