@@ -2711,7 +2711,9 @@ BIF_RET(make_small(n));
 		BIF_RET(make_small(hub_processes_count()));
 	} else if (ERTS_IS_ATOM_STR("proc_mem_state", BIF_ARG_1)) {
 		BIF_RET(make_small(proc_mem_state()));
-	}
+	} else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
+        BIF_RET(make_small(proc_sched_numa_aware));
+    }
 #endif
 	BIF_ERROR(BIF_P, BADARG);
 }
