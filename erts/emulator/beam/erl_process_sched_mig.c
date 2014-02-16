@@ -653,7 +653,14 @@ static ERTS_INLINE Uint default_check_balance(ErtsRunQueue *c_rq) {
 	erts_smp_runq_unlock(c_rq);
 
 	//Half-time check. Checks if schedulers are active and flags them
-	if (half_time_check(c_rq)) return 0;
+	if (half_time_check(c_rq)) {
+		// int i;
+		// fprintf(stdout, "\n>>>>>half_check\n");
+		// for (i = 0; i < 8; i++)
+		// 	fprintf(stdout, "\n%d-%d\n", i, ERTS_RUNQ_IX(i)->len);
+		// fflush(stdout);
+		return 0;
+	}
 
 	/*
 	 * check_balance() is never called in more threads
