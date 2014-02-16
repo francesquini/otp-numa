@@ -2713,6 +2713,15 @@ BIF_RET(make_small(n));
 		BIF_RET(make_small(proc_mem_state()));
 	} else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
         BIF_RET(make_small(proc_sched_numa_aware));
+    } else if (ERTS_IS_ATOM_STR("debug_sched_dist", BIF_ARG_1)) {
+        int i, j;
+        for (i = 0; i < erts_no_schedulers; i++) {
+            erts_printf("%d (%d): ", i, ERTS_RUNQ_IX(i)->run_queues_by_distance_size);
+            for (j = 0; j < ERTS_RUNQ_IX(i)->run_queues_by_distance_size; j++)
+                erts_printf("%d ", ERTS_RUNQ_IX(i)->run_queues_by_distance[j]);
+            erts_printf("\n", i);
+        }    
+        BIF_RET(am_true);
     }
 #endif
 	BIF_ERROR(BIF_P, BADARG);
