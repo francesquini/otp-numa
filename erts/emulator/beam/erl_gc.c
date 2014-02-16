@@ -734,7 +734,7 @@ erts_garbage_collect_literals(Process* p, Eterm* literals,
      * must be come before MSOs on the old heap, find the end of
      * current MSO list and use that as a starting point.
      */
-minor_collectionminor_collectionminor_collectionminor_collection
+
     if (oh) {
     prev = &MSO(p).first;
     while (*prev) {
