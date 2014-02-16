@@ -20,13 +20,16 @@ ERTS_INLINE void proc_sched_verify_tasks_to_run_after (Uint cbs);
  * Initialization and Configuration
  ***********************************
  ***********************************/
+int proc_sched_numa_aware = 0;
 
 ERTS_INLINE void proc_sched_initialize(Uint nQueues,  Uint no_schedulers, Uint no_schedulers_online) {
 	proc_sched_ip_initialize();
 	proc_sched_cb_initialize();
 	proc_sched_ws_initialize();
 	proc_sched_migrate_initialize(nQueues, no_schedulers, no_schedulers_online);
+	proc_sched_numa_aware = 0;
 }
+
 
 /***************************
  ***************************
@@ -143,16 +146,19 @@ ERTS_INLINE static void internal_proc_sched_set_migration_strategy(proc_sched_mi
 			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_default_cb;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_default_immigrate;			
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_default_immigration_candidate;
+			proc_sched_numa_aware &= ~2;
 			break;
 		case PROC_SCHED_MIGRATION_DISABLED:
 			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_disabled_cb;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_disabled_immigrate;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_disabled_immigration_candidate;
+			proc_sched_numa_aware &= ~2;
 			break;
 		case PROC_SCHED_MIGRATION_NUMA_AWARE:
 			PROC_SCHED_CURR_MIGR_STG_CB_FUN = &proc_sched_migrate_numa_cb; 
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN = &proc_sched_migrate_numa_immigrate;
 			PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN = &proc_sched_migrate_numa_immigration_candidate;
+			proc_sched_numa_aware |= 2;
 			break;
 		default:
 			return;
@@ -175,17 +181,22 @@ ERTS_INLINE void proc_sched_check_balance (ErtsRunQueue *rq) {
 	//if (DTRACE_ENABLED(scheduler_check_balance))
 	DTRACE1(scheduler_check_balance, rq->ix + 1);
 #endif
+	// fprintf(stdout, "\n>>>>>>LB\n");
+	// fflush(stdout);
 	cbs = PROC_SCHED_CURR_MIGR_STG_CB_FUN(rq);
 	proc_sched_verify_tasks_to_run_after(cbs);
 }
 
 
 ERTS_INLINE void proc_sched_immigrate (ErtsRunQueue *rq) {
+	// fprintf(stdout, "\n>>>>>>LB_IM\n");
+	// fflush(stdout);
 	PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_FUN(rq);
 }
 
 ERTS_INLINE Process* proc_sched_immigration_candidate (ErtsRunQueue *from_rq, int priority, ErtsRunQueue *to_rq) {
-	printf("\nLB_IM_CAND\n");
+	// fprintf(stdout, "\n>>>>>>LB_IM_CAND\n");
+	// fflush(stdout);
 	return PROC_SCHED_CURR_MIGR_STG_IMMIGRATION_CANDIDATE_FUN(from_rq, priority, to_rq);
 }
 
@@ -199,7 +210,6 @@ ERTS_INLINE Process* proc_sched_immigration_candidate (ErtsRunQueue *from_rq, in
 //Work Stealing
 static proc_sched_ws_strategy PROC_SCHED_CURRENT_WS_STRATEGY;
 static int (*PROC_SCHED_CURR_WS_STG_FUN)(ErtsRunQueue *) = &proc_sched_ws_default;
-int proc_sched_ws_strategy_numa_aware = 0;
 
 ERTS_INLINE static void proc_sched_ws_initialize(void) {
 	internal_proc_sched_set_ws_strategy(PROC_SCHED_WS_DEFAULT);
@@ -215,15 +225,15 @@ ERTS_INLINE static void internal_proc_sched_set_ws_strategy(proc_sched_ws_strate
 	switch (strategy) {
 	case PROC_SCHED_WS_DEFAULT:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_default;
-		proc_sched_ws_strategy_numa_aware = 0;
+		proc_sched_numa_aware &= ~1;
 		break;
 	case PROC_SCHED_WS_DISABLED:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_disabled;
-		proc_sched_ws_strategy_numa_aware = 0;
+		proc_sched_numa_aware &= ~1;
 		break;
 	case PROC_SCHED_WS_NUMA_AWARE:
 		PROC_SCHED_CURR_WS_STG_FUN = &proc_sched_ws_numa_aware;
-		proc_sched_ws_strategy_numa_aware = 1;
+		proc_sched_numa_aware |= 1;
 		break;
 	default:
 		return;

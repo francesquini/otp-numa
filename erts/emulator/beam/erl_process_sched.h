@@ -75,7 +75,7 @@ typedef enum enum_proc_sched_ws_strategy {
 	PROC_SCHED_WS_NUMA_AWARE = 2,
 } proc_sched_ws_strategy;
 
-extern int proc_sched_ws_strategy_numa_aware;
+extern int proc_sched_numa_aware;
 
 
 void proc_sched_set_ws_strategy(proc_sched_ws_strategy);
