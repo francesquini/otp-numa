@@ -2722,6 +2722,12 @@ BIF_RET(make_small(n));
             erts_printf("\n", i);
         }    
         BIF_RET(am_true);
+    } else if (ERTS_IS_ATOM_STR("debug_sched_nodes", BIF_ARG_1)) {
+        int i;
+        for (i = 0; i < erts_no_schedulers; i++) {
+            erts_printf("RQ%dN%d\n", i, ERTS_RUNQ_IX(i)->numa_node);
+        }    
+        BIF_RET(am_true);
     }
 #endif
 	BIF_ERROR(BIF_P, BADARG);
