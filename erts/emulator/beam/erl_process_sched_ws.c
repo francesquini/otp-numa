@@ -295,13 +295,15 @@ static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int numa_aware) {
 				erts_printf("Cannot work steal hierarchically if schedulers distance vector is empty!!\n");
 				exit(42);
 			}
-			for (i = rq->run_queues_by_distance_size - 1; i >= 0 && erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs; i++) {
+			
+			for (i = rq->run_queues_by_distance_size - 1; i >= 0 && erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs; i--) {
 				vix = rq->run_queues_by_distance[i];
 				if (vix >= active_rqs) continue;
 				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
 				if (res) goto done;
 			}
 			//ok, no one to bring home. Try to migrate actors from the nearest scheduler
+			
 			bring_home = 0;
 			for (i = 0; i <  rq->run_queues_by_distance_size && erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs; i++) {
 				vix = rq->run_queues_by_distance[i];
