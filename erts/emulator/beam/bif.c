@@ -4341,7 +4341,7 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     	else
     		goto error;
     	BIF_RET(before ? am_true : am_false);
-    } else if (ERTS_IS_ATOM_STR("scheduler_distances", BIF_ARG_1)) {//all indices are base 1
+    } else if (ERTS_IS_ATOM_STR("scheduler_distances", BIF_ARG_1)) {//all indices ARE BASE 1
         if (is_tuple(BIF_ARG_2)) {
             Eterm schedulerOrigin, schedulerDest, position;
             int schedulerOriginNum, schedulerDestNum, positionNum;

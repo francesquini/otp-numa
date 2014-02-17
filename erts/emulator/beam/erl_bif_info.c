@@ -2714,10 +2714,10 @@ BIF_RET(make_small(n));
     } else if (ERTS_IS_ATOM_STR("scheduler_distances", BIF_ARG_1)) {
         int i, j;
         for (i = 0; i < erts_no_schedulers; i++) {
-            erts_printf("%d (%d): ", i, ERTS_RUNQ_IX(i)->run_queues_by_distance_size);
+            erts_printf("%d (%d): ", i + 1, ERTS_RUNQ_IX(i)->run_queues_by_distance_size);
             for (j = 0; j < ERTS_RUNQ_IX(i)->run_queues_by_distance_size; j++)
-                erts_printf("%d ", ERTS_RUNQ_IX(i)->run_queues_by_distance[j]);
-            erts_printf("\n", i);
+                erts_printf("%d ", ERTS_RUNQ_IX(i)->run_queues_by_distance[j] + 1);
+            erts_printf("\n");
         }    
         BIF_RET(am_true);
     } else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
