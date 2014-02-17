@@ -4341,6 +4341,28 @@ BIF_RETTYPE system_flag_2(BIF_ALIST_2)
     	else
     		goto error;
     	BIF_RET(before ? am_true : am_false);
+    } else if (ERTS_IS_ATOM_STR("scheduler_distances", BIF_ARG_1)) {//all indices are base 1
+        if (is_tuple(BIF_ARG_2)) {
+            Eterm schedulerOrigin, schedulerDest, position;
+            int schedulerOriginNum, schedulerDestNum, positionNum;
+            Eterm* tp3 = tuple_val(BIF_ARG_2);
+            if (*tp3 != make_arityval(3)) goto error;
+            schedulerOrigin = tp3[1];
+            schedulerDest = tp3[2];
+            position = tp3[3];
+
+            if (!is_small(schedulerOrigin) || !is_small(schedulerDest) || !is_small(position) ||
+                (schedulerOriginNum = unsigned_val(schedulerOrigin)) < 1 || schedulerOriginNum > erts_no_schedulers ||
+                (schedulerDestNum = unsigned_val(schedulerDest)) < 1 || schedulerDestNum > erts_no_schedulers ||
+                (positionNum = unsigned_val(position)) < 1 || positionNum > ERTS_RUNQ_IX(schedulerOriginNum - 1)->run_queues_by_distance_size)
+                goto error;
+
+            ERTS_RUNQ_IX(schedulerOriginNum - 1)->run_queues_by_distance[positionNum - 1] = schedulerDestNum - 1;
+
+            BIF_RET(am_ok);
+        } else {
+            goto error;
+        }
     }
 #endif
 

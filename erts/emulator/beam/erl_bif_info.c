@@ -2711,9 +2711,7 @@ BIF_RET(make_small(n));
 		BIF_RET(make_small(hub_processes_count()));
 	} else if (ERTS_IS_ATOM_STR("proc_mem_state", BIF_ARG_1)) {
 		BIF_RET(make_small(proc_mem_state()));
-	} else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
-        BIF_RET(make_small(proc_sched_numa_aware));
-    } else if (ERTS_IS_ATOM_STR("debug_sched_dist", BIF_ARG_1)) {
+    } else if (ERTS_IS_ATOM_STR("scheduler_distances", BIF_ARG_1)) {
         int i, j;
         for (i = 0; i < erts_no_schedulers; i++) {
             erts_printf("%d (%d): ", i, ERTS_RUNQ_IX(i)->run_queues_by_distance_size);
@@ -2722,10 +2720,12 @@ BIF_RET(make_small(n));
             erts_printf("\n", i);
         }    
         BIF_RET(am_true);
+    } else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
+        BIF_RET(make_small(proc_sched_numa_aware));
     } else if (ERTS_IS_ATOM_STR("debug_sched_nodes", BIF_ARG_1)) {
         int i;
         for (i = 0; i < erts_no_schedulers; i++) {
-            erts_printf("RQ%dN%d\n", i, ERTS_RUNQ_IX(i)->numa_node);
+            erts_printf("RQ\t%d\tN\t%d\n", i, ERTS_RUNQ_IX(i)->numa_node);
         }    
         BIF_RET(am_true);
     }
