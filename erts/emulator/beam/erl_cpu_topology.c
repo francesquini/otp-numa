@@ -611,18 +611,22 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
         if (numa_available() != -1) {
             int i, j;
             int schedulers_by_node = erts_no_schedulers / (erts_get_max_numa_node() + 1);
-            int other_schedulers = erts_no_schedulers - schedulers_by_node;
             for (i = 0; i < erts_no_schedulers; i++) {
                 int cont;
                 if (ERTS_RUNQ_IX(i)->run_queues_by_distance_size)
                     free(ERTS_RUNQ_IX(i)->run_queues_by_distance);
-                ERTS_RUNQ_IX(i)->run_queues_by_distance_size = other_schedulers;
-                ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * other_schedulers);
+                ERTS_RUNQ_IX(i)->run_queues_by_distance_size = erts_no_schedulers;
+                ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * erts_no_schedulers);
                 cont = 0;
+                j = 0;
+                while (cont < schedulers_by_node) {
+                    if (ERTS_RUNQ_IX(j)->numa_node == ERTS_RUNQ_IX(i)->numa_node && i != j)
+                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont++] = j;
+                    j++;
+                }
                 for (j = 0; j < erts_no_schedulers; j++) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
-                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont] = j;                        
-                        cont++;
+                        ERTS_RUNQ_IX(i)->run_queues_by_distance[cont++] = j;
                     }                    
                 }
             }
