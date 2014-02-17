@@ -626,11 +626,13 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                     }
                     j++;
                 }
-                for (j = 0; j < erts_no_schedulers - 1; j++) {
+                j = 0;
+                while (cont < erts_no_schedulers - 1) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node && i != j) {
                         if (i == 0) erts_printf("R %d %d\n", cont, j);
                         ERTS_RUNQ_IX(i)->run_queues_by_distance[cont++] = j;
-                    }                    
+                    }
+                    j++;
                 }
             }
         }
