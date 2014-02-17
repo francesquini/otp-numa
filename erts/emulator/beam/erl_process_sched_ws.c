@@ -284,10 +284,33 @@ static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int numa_aware) {
 		}
 
 		/* ... then try to steal a job from another active queue... */
-		//We first try to find someone to bring home, if not possible,
-		//then we bring someone else
-		bring_home = (numa_aware) ? 2 : 0;
-		for (; bring_home >= 0; bring_home -= 2) {
+		if (numa_aware) {
+			//We first try to find someone to bring home, if not possible,
+			//then we bring someone else. 
+
+			//since we want to bring home, we try to bring far away actors first
+			int i;
+			bring_home = 2;
+			if (rq->run_queues_by_distance_size == 0) {
+				erts_printf("Cannot work steal hierarchically if schedulers distance vector is empty!!\n");
+				exit(42);
+			}
+			for (i = rq->run_queues_by_distance_size - 1; i >= 0 && erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs; i++) {
+				vix = rq->run_queues_by_distance[i];
+				if (vix >= active_rqs) continue;
+				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
+				if (res) goto done;
+			}
+			//ok, no one to bring home. Try to migrate actors from the nearest scheduler
+			bring_home = 0;
+			for (i = 0; i <  rq->run_queues_by_distance_size && erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs; i++) {
+				vix = rq->run_queues_by_distance[i];
+				if (vix >= active_rqs) continue;
+				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
+				if (res) goto done;
+			}
+		} else {
+			bring_home = 0;
 			vix = rq->ix;
 			while (erts_smp_atomic32_read_acqb(&no_empty_run_queues) < blnc_rqs) {
 				vix++;
@@ -295,13 +318,11 @@ static ERTS_INLINE int try_steal_task(ErtsRunQueue *rq, int numa_aware) {
 					vix = 0;
 				if (vix == rq->ix)
 					break;
-
 				res = check_possible_steal_victim(rq, &rq_locked, vix, bring_home);
 				if (res)
 					goto done;
-			}
+			}			
 		}
-
 	}
 
 	done:
