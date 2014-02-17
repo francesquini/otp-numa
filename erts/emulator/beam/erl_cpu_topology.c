@@ -616,7 +616,7 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                 if (ERTS_RUNQ_IX(i)->run_queues_by_distance_size)
                     free(ERTS_RUNQ_IX(i)->run_queues_by_distance);
                 ERTS_RUNQ_IX(i)->run_queues_by_distance_size = erts_no_schedulers;
-                ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * erts_no_schedulers);
+                ERTS_RUNQ_IX(i)->run_queues_by_distance = malloc(sizeof(int) * (erts_no_schedulers - 1));
                 cont = 0;
                 j = 0;
                 while (cont < schedulers_by_node) {
@@ -624,7 +624,7 @@ static void write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
                         ERTS_RUNQ_IX(i)->run_queues_by_distance[cont++] = j;
                     j++;
                 }
-                for (j = 0; j < erts_no_schedulers; j++) {
+                for (j = 0; j < erts_no_schedulers - 1; j++) {
                     if (ERTS_RUNQ_IX(j)->numa_node != ERTS_RUNQ_IX(i)->numa_node) {
                         ERTS_RUNQ_IX(i)->run_queues_by_distance[cont++] = j;
                     }                    
