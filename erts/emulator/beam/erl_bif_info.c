@@ -2719,7 +2719,7 @@ BIF_RET(make_small(n));
                 erts_printf("%d ", ERTS_RUNQ_IX(i)->run_queues_by_distance[j] + 1);
             erts_printf("\n");
         }    
-        BIF_RET(am_true);
+        BIF_RET(am_ok);
     } else if (ERTS_IS_ATOM_STR("debug_misc", BIF_ARG_1)) {
         BIF_RET(make_small(proc_sched_numa_aware));
     } else if (ERTS_IS_ATOM_STR("debug_sched_nodes", BIF_ARG_1)) {
@@ -2727,7 +2727,7 @@ BIF_RET(make_small(n));
         for (i = 0; i < erts_no_schedulers; i++) {
             erts_printf("RQ\t%d\tN\t%d\n", i, ERTS_RUNQ_IX(i)->numa_node);
         }    
-        BIF_RET(am_true);
+        BIF_RET(am_ok);
     }
 #endif
 	BIF_ERROR(BIF_P, BADARG);
